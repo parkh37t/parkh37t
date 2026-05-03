@@ -68,6 +68,9 @@ export async function TaskList({ expanded = false }: { expanded?: boolean }) {
             추가
           </button>
         </div>
+        <p className="text-[11px] text-ink-muted">
+          마감일을 지정하면 캘린더와 오늘의 일정에 자동으로 함께 표시됩니다.
+        </p>
       </form>
 
       {visible.length === 0 ? (
