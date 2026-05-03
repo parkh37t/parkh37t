@@ -1,6 +1,7 @@
 import { addDays, format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarDays } from "lucide-react";
+import { mergeWithoutDuplicates } from "@/lib/event-merge";
 import { isSameDayKst, startOfWeekKst } from "@/lib/format-time";
 import { listWeekEvents } from "@/lib/google-calendar";
 import { listWeekTaskEvents } from "@/lib/tasks";
@@ -14,7 +15,7 @@ export async function WeekView({ expanded = false }: { expanded?: boolean }) {
     listWeekEvents().catch(() => [] as Event[]),
     listWeekTaskEvents().catch(() => [] as Event[]),
   ]);
-  const events = [...calendarEvents, ...taskEvents];
+  const events = mergeWithoutDuplicates(calendarEvents, taskEvents);
   const range = `${format(start, "M.d", { locale: ko })} — ${format(
     addDays(start, 6),
     "M.d",

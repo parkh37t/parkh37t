@@ -64,7 +64,6 @@ export async function listTasksWithDueBetween(
     .from("tasks")
     .select("*")
     .not("due_at", "is", null)
-    .is("google_event_id", null)
     .gte("due_at", from.toISOString())
     .lte("due_at", to.toISOString())
     .order("due_at", { ascending: true });
@@ -109,6 +108,7 @@ function taskToEvent(task: Task): Event {
     location: null,
     category: task.category ?? "default",
     source: "local",
+    googleEventId: task.googleEventId ?? null,
   };
 }
 

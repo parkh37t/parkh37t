@@ -2,6 +2,7 @@ import { addMonths, startOfMonth } from "date-fns";
 import { Link as LinkIcon } from "lucide-react";
 import { listEventsBetween } from "@/lib/google-calendar";
 import { listTaskEventsBetween } from "@/lib/tasks";
+import { mergeWithoutDuplicates } from "@/lib/event-merge";
 import {
   parseOffset,
   parseView,
@@ -29,7 +30,7 @@ export default async function CalendarPage({
     listEventsBetween(range.start, range.end).catch(() => [] as Event[]),
     listTaskEventsBetween(range.start, range.end).catch(() => [] as Event[]),
   ]);
-  const events = [...calendarEvents, ...taskEvents];
+  const events = mergeWithoutDuplicates(calendarEvents, taskEvents);
 
   return (
     <>
