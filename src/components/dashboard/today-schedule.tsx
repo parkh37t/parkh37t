@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarClock, CheckCircle2 } from "lucide-react";
+import { formatTimeKst } from "@/lib/format-time";
 import { listTodaysEvents } from "@/lib/google-calendar";
 import { listTodaysTaskEvents } from "@/lib/tasks";
 import { categoryColors } from "@/lib/theme";
@@ -49,6 +50,11 @@ export async function TodaySchedule() {
           {events.map((ev) => {
             const color = categoryColors[ev.category ?? "default"];
             const isTask = ev.source === "local";
+            const startLabel = formatTimeKst(ev.startsAt);
+            const endLabel =
+              ev.endsAt && ev.endsAt !== ev.startsAt
+                ? formatTimeKst(ev.endsAt)
+                : null;
             return (
               <li
                 key={ev.id}
@@ -72,7 +78,7 @@ export async function TodaySchedule() {
                   ) : null}
                 </div>
                 <time className="shrink-0 font-mono text-xs text-ink-muted">
-                  {format(new Date(ev.startsAt), "HH:mm")}
+                  {endLabel ? `${startLabel} ~ ${endLabel}` : startLabel}
                 </time>
               </li>
             );

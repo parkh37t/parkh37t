@@ -9,6 +9,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { ko } from "date-fns/locale";
+import { isSameDayKst } from "@/lib/format-time";
 import { categoryColors } from "@/lib/theme";
 import type { Event } from "@/types";
 
@@ -49,9 +50,7 @@ export function MonthGrid({
         {days.map((day) => {
           const isCurrentMonth = isSameMonth(day, reference);
           const isToday = isSameDay(day, today);
-          const dayEvents = events.filter((e) =>
-            isSameDay(new Date(e.startsAt), day),
-          );
+          const dayEvents = events.filter((e) => isSameDayKst(e.startsAt, day));
           const isSunday = day.getDay() === 0;
           return (
             <div

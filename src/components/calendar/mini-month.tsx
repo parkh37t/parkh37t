@@ -9,6 +9,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { ko } from "date-fns/locale";
+import { isSameDayKst } from "@/lib/format-time";
 import { categoryColors } from "@/lib/theme";
 import type { Event } from "@/types";
 
@@ -51,7 +52,7 @@ export function MiniMonth({
           const inMonth = isSameMonth(day, reference);
           const isToday = isSameDay(day, today);
           const dayEvents = events.filter((e) =>
-            isSameDay(new Date(e.startsAt), day),
+            isSameDayKst(e.startsAt, day),
           );
           const dot = dayEvents[0];
           const dotColor = dot

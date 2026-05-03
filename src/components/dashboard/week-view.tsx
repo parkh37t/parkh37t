@@ -1,6 +1,7 @@
 import { addDays, format, isSameDay, startOfWeek } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarRange } from "lucide-react";
+import { isSameDayKst } from "@/lib/format-time";
 import { listWeekEvents } from "@/lib/google-calendar";
 import { listWeekTaskEvents } from "@/lib/tasks";
 import { categoryColors } from "@/lib/theme";
@@ -33,9 +34,7 @@ export async function WeekView({ expanded = false }: { expanded?: boolean }) {
 
       <div className="grid grid-cols-7 gap-2">
         {days.map((day) => {
-          const dayEvents = events.filter((e) =>
-            isSameDay(new Date(e.startsAt), day),
-          );
+          const dayEvents = events.filter((e) => isSameDayKst(e.startsAt, day));
           const isToday = isSameDay(day, today);
           return (
             <div
