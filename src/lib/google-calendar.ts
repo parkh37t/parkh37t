@@ -63,9 +63,18 @@ async function resolveCalendarIds(
 ): Promise<string[]> {
   const calendar = google.calendar({ version: "v3", auth });
   const list = await calendar.calendarList.list();
-  const matched = (list.data.items ?? []).filter((c) =>
+  const items = list.data.items ?? [];
+  const matched = items.filter((c) =>
     matchesTargetCalendar(c.summary ?? c.summaryOverride),
   );
+  if (matched.length === 0) {
+    const available = items
+      .map((c) => c.summary ?? c.summaryOverride)
+      .filter(Boolean);
+    console.warn(
+      `[google-calendar] no calendar matched "${TARGET_CALENDAR_NAME}". Available: ${JSON.stringify(available)}`,
+    );
+  }
   return matched
     .map((c) => c.id)
     .filter((id): id is string => Boolean(id));
@@ -138,7 +147,18 @@ export async function createTaskEvent(input: {
   description?: string;
 }): Promise<string | null> {
   const { auth, calendarId } = await getTargetCalendarId();
-  if (!auth || !calendarId) return null;
+  if (!auth) {
+    console.warn(
+      "[createTaskEvent] skipped: no Google auth (missing token cookie or env vars)",
+    );
+    return null;
+  }
+  if (!calendarId) {
+    console.warn(
+      `[createTaskEvent] skipped: no calendar matching "${TARGET_CALENDAR_NAME}"`,
+    );
+    return null;
+  }
   const calendar = google.calendar({ version: "v3", auth });
 
   const start = new Date(input.dueAt);
@@ -157,9 +177,12 @@ export async function createTaskEvent(input: {
         end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
       },
     });
+    console.log(
+      `[createTaskEvent] inserted event id=${res.data.id} into calendar=${calendarId}`,
+    );
     return res.data.id ?? null;
   } catch (e) {
-    console.error("createTaskEvent failed:", e);
+    console.error("[createTaskEvent] insert failed:", e);
     return null;
   }
 }
