@@ -40,12 +40,55 @@ export function getAuthUrl() {
   });
 }
 
+export async function googleConnected(): Promise<boolean> {
+  if (!googleConfigured()) return false;
+  const token = (await cookies()).get(TOKEN_COOKIE)?.value;
+  return Boolean(token);
+}
+
+const REFRESH_LEEWAY_MS = 60 * 1000;
+
 async function getAuthorizedClient() {
   if (!googleConfigured()) return null;
-  const token = (await cookies()).get(TOKEN_COOKIE)?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(TOKEN_COOKIE)?.value;
   if (!token) return null;
+
+  const credentials = JSON.parse(token);
   const oauth = makeOAuthClient();
-  oauth.setCredentials(JSON.parse(token));
+  oauth.setCredentials(credentials);
+
+  const expired =
+    typeof credentials.expiry_date === "number" &&
+    credentials.expiry_date <= Date.now() + REFRESH_LEEWAY_MS;
+
+  if (expired) {
+    if (!credentials.refresh_token) {
+      console.warn(
+        "[google] access_token expired but no refresh_token; user must reconnect",
+      );
+      return null;
+    }
+    try {
+      const { credentials: refreshed } = await oauth.refreshAccessToken();
+      const merged = { ...credentials, ...refreshed };
+      oauth.setCredentials(merged);
+      cookieStore.set(TOKEN_COOKIE, JSON.stringify(merged), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+      console.log(
+        `[google] refreshed access_token, new expiry=${merged.expiry_date}`,
+      );
+    } catch (e) {
+      console.error("[google] refresh failed:", e);
+      return null;
+    }
+  }
+
   return oauth;
 }
 

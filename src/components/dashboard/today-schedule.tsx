@@ -1,4 +1,5 @@
 import { CalendarClock, CheckCircle2, Clock } from "lucide-react";
+import { mergeWithoutDuplicates } from "@/lib/event-merge";
 import { formatTimeKst, formatTodayLabelKst } from "@/lib/format-time";
 import { listTodaysEvents } from "@/lib/google-calendar";
 import { listTodaysTaskEvents } from "@/lib/tasks";
@@ -10,9 +11,7 @@ export async function TodaySchedule() {
     listTodaysEvents().catch(() => [] as Event[]),
     listTodaysTaskEvents().catch(() => [] as Event[]),
   ]);
-  const events = [...calendarEvents, ...taskEvents].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-  );
+  const events = mergeWithoutDuplicates(calendarEvents, taskEvents);
   const now = new Date();
 
   return (

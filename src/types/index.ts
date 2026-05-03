@@ -22,6 +22,7 @@ export type Event = {
   location?: string | null;
   category?: Category;
   source: "local" | "google";
+  googleEventId?: string | null;
 };
 
 export type Note = {
