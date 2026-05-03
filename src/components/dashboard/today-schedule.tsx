@@ -1,7 +1,5 @@
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 import { CalendarClock, CheckCircle2, Clock } from "lucide-react";
-import { formatTimeKst } from "@/lib/format-time";
+import { formatTimeKst, formatTodayLabelKst } from "@/lib/format-time";
 import { listTodaysEvents } from "@/lib/google-calendar";
 import { listTodaysTaskEvents } from "@/lib/tasks";
 import { categoryColors } from "@/lib/theme";
@@ -29,7 +27,7 @@ export async function TodaySchedule() {
               오늘의 일정
             </div>
             <div className="text-[12.5px] text-zinc-400 mt-0.5 truncate">
-              {format(now, "M월 d일 (EEEE)", { locale: ko })}
+              {formatTodayLabelKst(now)}
             </div>
           </div>
         </div>

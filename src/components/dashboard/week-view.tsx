@@ -1,14 +1,14 @@
-import { addDays, format, startOfWeek } from "date-fns";
+import { addDays, format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarDays } from "lucide-react";
-import { isSameDayKst } from "@/lib/format-time";
+import { isSameDayKst, startOfWeekKst } from "@/lib/format-time";
 import { listWeekEvents } from "@/lib/google-calendar";
 import { listWeekTaskEvents } from "@/lib/tasks";
 import type { Event } from "@/types";
 
 export async function WeekView({ expanded = false }: { expanded?: boolean }) {
   const today = new Date();
-  const start = startOfWeek(today, { weekStartsOn: 1 });
+  const start = startOfWeekKst(today);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const [calendarEvents, taskEvents] = await Promise.all([
     listWeekEvents().catch(() => [] as Event[]),

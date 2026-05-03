@@ -1,4 +1,9 @@
-import { endOfDay, endOfWeek, startOfDay, startOfWeek } from "date-fns";
+import {
+  endOfDayKst,
+  endOfWeekKst,
+  startOfDayKst,
+  startOfWeekKst,
+} from "@/lib/format-time";
 import {
   getServiceSupabase,
   serviceSupabaseConfigured,
@@ -69,14 +74,19 @@ export async function listTasksWithDueBetween(
 
 export async function listTodaysTaskEvents(): Promise<Event[]> {
   const now = new Date();
-  const tasks = await listTasksWithDueBetween(startOfDay(now), endOfDay(now));
+  const tasks = await listTasksWithDueBetween(
+    startOfDayKst(now),
+    endOfDayKst(now),
+  );
   return tasks.map(taskToEvent);
 }
 
 export async function listWeekTaskEvents(): Promise<Event[]> {
-  const start = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const end = endOfWeek(new Date(), { weekStartsOn: 1 });
-  const tasks = await listTasksWithDueBetween(start, end);
+  const now = new Date();
+  const tasks = await listTasksWithDueBetween(
+    startOfWeekKst(now),
+    endOfWeekKst(now),
+  );
   return tasks.map(taskToEvent);
 }
 
