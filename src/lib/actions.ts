@@ -76,6 +76,10 @@ export async function createTask(formData: FormData) {
   const category = readCategory(formData);
   const { due_at, ends_at } = readDateRange(formData);
 
+  console.log(
+    `[createTask] title="${title}" due_at=${due_at ?? "null"} ends_at=${ends_at ?? "null"}`,
+  );
+
   if (serviceSupabaseConfigured) {
     const supabase = getServiceSupabase();
     const { data, error } = await supabase
@@ -84,7 +88,7 @@ export async function createTask(formData: FormData) {
       .select("id")
       .single();
     if (error) {
-      console.error("createTask insert failed:", error);
+      console.error("[createTask] insert failed:", error);
     } else if (data && due_at) {
       const eventId = await createTaskEvent({
         title,
@@ -98,10 +102,27 @@ export async function createTask(formData: FormData) {
           .update({ google_event_id: eventId })
           .eq("id", data.id);
         if (updateError) {
-          console.error("createTask save google_event_id failed:", updateError);
+          console.error(
+            "[createTask] save google_event_id failed:",
+            updateError,
+          );
+        } else {
+          console.log(
+            `[createTask] linked task ${data.id} -> google event ${eventId}`,
+          );
         }
+      } else {
+        console.warn(
+          `[createTask] task ${data.id} saved but Google event was not created`,
+        );
       }
+    } else if (data && !due_at) {
+      console.log(
+        `[createTask] task ${data.id} saved without due_at; skipping Google sync`,
+      );
     }
+  } else {
+    console.warn("[createTask] serviceSupabaseConfigured is false; nothing saved");
   }
 
   revalidatePath("/");

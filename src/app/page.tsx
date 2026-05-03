@@ -4,6 +4,8 @@ import { WeekView } from "@/components/dashboard/week-view";
 import { QuickNote } from "@/components/dashboard/quick-note";
 import { formatFullDateLabelKst } from "@/lib/format-time";
 
+export const dynamic = "force-dynamic";
+
 export default function DashboardPage() {
   const now = new Date();
   return (

@@ -1,5 +1,7 @@
 import { TaskList } from "@/components/dashboard/task-list";
 
+export const dynamic = "force-dynamic";
+
 export default function TasksPage() {
   return (
     <>

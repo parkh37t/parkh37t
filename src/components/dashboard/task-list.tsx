@@ -63,26 +63,26 @@ export async function TaskList({ expanded = false }: { expanded?: boolean }) {
             ))}
           </select>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
           <input
             type="date"
             name="due_date"
             aria-label="날짜"
-            className="h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+            className="h-11 w-full min-w-0 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <input
               type="time"
               name="due_time"
               aria-label="시작 시각"
-              className="flex-1 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+              className="flex-1 min-w-0 h-11 px-2 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
             />
-            <span className="text-zinc-400 text-sm">~</span>
+            <span className="text-zinc-400 text-sm shrink-0">~</span>
             <input
               type="time"
               name="end_time"
               aria-label="종료 시각"
-              className="flex-1 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+              className="flex-1 min-w-0 h-11 px-2 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
             />
           </div>
         </div>
