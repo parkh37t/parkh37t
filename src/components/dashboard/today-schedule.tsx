@@ -2,56 +2,80 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { listTodaysEvents } from "@/lib/google-calendar";
 import { categoryColors } from "@/lib/theme";
+import { CalendarClock, Clock } from "lucide-react";
 
 export async function TodaySchedule() {
   const events = await listTodaysEvents().catch(() => []);
   const now = new Date();
 
   return (
-    <div className="card flex flex-col gap-4">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">오늘의 일정</h2>
-          <p className="text-sm text-ink-muted">
-            {format(now, "M월 d일 (EEEE)", { locale: ko })}
-          </p>
+    <section className="card flex flex-col">
+      <header className="flex items-start justify-between gap-3 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-sm bg-gradient-to-br from-cyan-400 to-teal-400">
+            <CalendarClock className="h-5 w-5" strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[18px] lg:text-[20px] font-bold leading-tight text-ink truncate">
+              오늘의 일정
+            </div>
+            <div className="text-[12.5px] text-zinc-400 mt-0.5 truncate">
+              {format(now, "M월 d일 (EEEE)", { locale: ko })}
+            </div>
+          </div>
         </div>
-        <span className="chip bg-accent-sky/10 text-accent-sky">
+        <div className="px-2.5 h-7 rounded-full flex items-center text-[12px] font-semibold whitespace-nowrap bg-cyan-50 text-cyan-700">
           {events.length}개
-        </span>
+        </div>
       </header>
 
       {events.length === 0 ? (
-        <p className="py-12 text-center text-sm text-ink-muted">
-          오늘 예정된 일정이 없습니다.
-        </p>
+        <div className="flex flex-col items-center justify-center text-center py-10">
+          <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center text-zinc-400 mb-3">
+            <CalendarClock className="h-[22px] w-[22px]" />
+          </div>
+          <div className="text-[14px] text-ink-muted font-medium">
+            오늘 예정된 일정이 없습니다.
+          </div>
+          <div className="text-[12px] text-zinc-400 mt-1">
+            우측 카드에서 빠르게 추가해보세요.
+          </div>
+        </div>
       ) : (
-        <ol className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-2.5">
           {events.map((ev) => {
             const color = categoryColors[ev.category ?? "default"];
             return (
               <li
                 key={ev.id}
-                className="flex items-start gap-3 rounded-lg p-2 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                className="flex items-center gap-3 px-3.5 py-3 rounded-2xl bg-[#FAFAFC] border border-zinc-100"
               >
-                <span
-                  className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: color }}
+                <div
+                  className="w-1 h-9 rounded-full"
+                  style={{ background: color }}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="truncate font-medium">{ev.title}</p>
-                  {ev.location ? (
-                    <p className="truncate text-xs text-ink-muted">{ev.location}</p>
-                  ) : null}
+                  <div className="text-[14.5px] font-semibold text-ink truncate">
+                    {ev.title}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 text-[12px] text-ink-muted">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {format(new Date(ev.startsAt), "HH:mm")}
+                    </span>
+                    {ev.location ? (
+                      <>
+                        <span className="text-zinc-200">·</span>
+                        <span className="truncate">{ev.location}</span>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <time className="shrink-0 font-mono text-xs text-ink-muted">
-                  {format(new Date(ev.startsAt), "HH:mm")}
-                </time>
               </li>
             );
           })}
-        </ol>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#8b5cf6",
+  themeColor: "#7C6BF6",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -22,11 +22,22 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
-        <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 sm:p-6">
-          <Nav />
-          <main className="flex-1">{children}</main>
-        </div>
+        <Nav />
+        <main className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-24 pt-6 lg:pt-10">
+          {children}
+        </main>
+        <footer className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-10 pt-2 text-[12px] text-ink-muted flex items-center justify-center gap-1.5">
+          Todo Dashboard · 데이터는 자동 저장됩니다
+        </footer>
       </body>
     </html>
   );
