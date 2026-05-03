@@ -9,6 +9,7 @@ export type Task = {
   priority?: Priority;
   category?: Category;
   dueAt?: string | null;
+  googleEventId?: string | null;
   createdAt: string;
 };
 

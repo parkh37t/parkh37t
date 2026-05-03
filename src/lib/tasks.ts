@@ -59,6 +59,7 @@ export async function listTasksWithDueBetween(
     .from("tasks")
     .select("*")
     .not("due_at", "is", null)
+    .is("google_event_id", null)
     .gte("due_at", from.toISOString())
     .lte("due_at", to.toISOString())
     .order("due_at", { ascending: true });
@@ -108,6 +109,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     priority: row.priority as Task["priority"],
     category: row.category as Task["category"],
     dueAt: (row.due_at as string | null) ?? null,
+    googleEventId: (row.google_event_id as string | null) ?? null,
     createdAt: String(row.created_at),
   };
 }

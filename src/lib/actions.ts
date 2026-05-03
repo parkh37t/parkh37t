@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  createTaskEvent,
+  deleteTaskEvent,
+} from "@/lib/google-calendar";
+import {
   getServiceSupabase,
   serviceSupabaseConfigured,
 } from "@/lib/supabase";
@@ -33,10 +37,35 @@ export async function createTask(formData: FormData) {
 
   if (serviceSupabaseConfigured) {
     const supabase = getServiceSupabase();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("tasks")
-      .insert({ title, priority, category, due_at });
-    if (error) console.error("createTask insert failed:", error);
+      .insert({ title, priority, category, due_at })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("createTask insert failed:", error);
+    } else if (data && due_at) {
+      const description = [
+        `우선순위: ${priority}`,
+        category !== "default" ? `카테고리: ${category}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const eventId = await createTaskEvent({
+        title,
+        dueAt: due_at,
+        description: description || undefined,
+      });
+      if (eventId) {
+        const { error: updateError } = await supabase
+          .from("tasks")
+          .update({ google_event_id: eventId })
+          .eq("id", data.id);
+        if (updateError) {
+          console.error("createTask save google_event_id failed:", updateError);
+        }
+      }
+    }
   }
 
   revalidatePath("/");
@@ -69,8 +98,17 @@ export async function deleteTask(formData: FormData) {
 
   if (serviceSupabaseConfigured) {
     const supabase = getServiceSupabase();
+    const { data: existing } = await supabase
+      .from("tasks")
+      .select("google_event_id")
+      .eq("id", id)
+      .maybeSingle();
     const { error } = await supabase.from("tasks").delete().eq("id", id);
-    if (error) console.error("deleteTask failed:", error);
+    if (error) {
+      console.error("deleteTask failed:", error);
+    } else if (existing?.google_event_id) {
+      await deleteTaskEvent(String(existing.google_event_id));
+    }
   }
 
   revalidatePath("/");

@@ -11,8 +11,11 @@ create table if not exists tasks (
   priority text check (priority in ('low','med','high')),
   category text check (category in ('work','personal','health','study','default')) default 'default',
   due_at timestamptz,
+  google_event_id text,
   created_at timestamptz not null default now()
 );
+
+alter table tasks add column if not exists google_event_id text;
 
 create table if not exists events (
   id uuid primary key default uuid_generate_v4(),
