@@ -76,6 +76,14 @@ export async function listWeekTaskEvents(): Promise<Event[]> {
   return tasks.map(taskToEvent);
 }
 
+export async function listTaskEventsBetween(
+  start: Date,
+  end: Date,
+): Promise<Event[]> {
+  const tasks = await listTasksWithDueBetween(start, end);
+  return tasks.map(taskToEvent);
+}
+
 function taskToEvent(task: Task): Event {
   const startsAt = task.dueAt ?? new Date().toISOString();
   return {

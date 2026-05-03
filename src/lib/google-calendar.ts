@@ -8,7 +8,7 @@ const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
 const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI ?? "";
 
 const TARGET_CALENDAR_NAME =
-  process.env.GOOGLE_CALENDAR_NAME?.trim() || "컨버전스";
+  process.env.GOOGLE_CALENDAR_NAME?.trim() || "Wylie 컨버전스 2본부";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
@@ -42,11 +42,13 @@ async function getAuthorizedClient() {
   return oauth;
 }
 
+function normalize(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 function matchesTargetCalendar(summary: string | null | undefined) {
   if (!summary) return false;
-  const target = TARGET_CALENDAR_NAME.toLowerCase();
-  const name = summary.toLowerCase();
-  return name.includes(target) || name.includes("convergence");
+  return normalize(summary) === normalize(TARGET_CALENDAR_NAME);
 }
 
 async function resolveCalendarIds(
@@ -103,4 +105,11 @@ export async function listTodaysEvents(): Promise<Event[]> {
 export async function listWeekEvents(): Promise<Event[]> {
   const start = startOfWeek(new Date(), { weekStartsOn: 1 });
   return fetchEvents(start, addDays(start, 7));
+}
+
+export async function listEventsBetween(
+  start: Date,
+  end: Date,
+): Promise<Event[]> {
+  return fetchEvents(start, end);
 }
