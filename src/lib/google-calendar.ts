@@ -113,3 +113,54 @@ export async function listEventsBetween(
 ): Promise<Event[]> {
   return fetchEvents(start, end);
 }
+
+async function getTargetCalendarId(): Promise<{
+  auth: Awaited<ReturnType<typeof getAuthorizedClient>>;
+  calendarId: string | null;
+}> {
+  const auth = await getAuthorizedClient();
+  if (!auth) return { auth: null, calendarId: null };
+  const ids = await resolveCalendarIds(auth);
+  return { auth, calendarId: ids[0] ?? null };
+}
+
+export async function createTaskEvent(input: {
+  title: string;
+  dueAt: string;
+  description?: string;
+}): Promise<string | null> {
+  const { auth, calendarId } = await getTargetCalendarId();
+  if (!auth || !calendarId) return null;
+  const calendar = google.calendar({ version: "v3", auth });
+
+  const start = new Date(input.dueAt);
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+
+  try {
+    const res = await calendar.events.insert({
+      calendarId,
+      requestBody: {
+        summary: input.title,
+        description:
+          input.description ?? "Parkh37t Dashboard 할 일에서 동기화됨",
+        start: { dateTime: start.toISOString() },
+        end: { dateTime: end.toISOString() },
+      },
+    });
+    return res.data.id ?? null;
+  } catch (e) {
+    console.error("createTaskEvent failed:", e);
+    return null;
+  }
+}
+
+export async function deleteTaskEvent(eventId: string): Promise<void> {
+  const { auth, calendarId } = await getTargetCalendarId();
+  if (!auth || !calendarId) return;
+  const calendar = google.calendar({ version: "v3", auth });
+  try {
+    await calendar.events.delete({ calendarId, eventId });
+  } catch (e) {
+    console.error("deleteTaskEvent failed:", e);
+  }
+}
