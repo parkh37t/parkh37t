@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getServerSupabase, supabaseConfigured } from "@/lib/supabase";
+import {
+  getServiceSupabase,
+  serviceSupabaseConfigured,
+} from "@/lib/supabase";
 import type { Category, Priority } from "@/types";
 
 const VALID_PRIORITIES: Priority[] = ["low", "med", "high"];
@@ -28,11 +31,12 @@ export async function createTask(formData: FormData) {
   const due_at = dueRaw ? new Date(dueRaw).toISOString() : null;
   if (!title) return;
 
-  if (supabaseConfigured) {
-    const supabase = await getServerSupabase();
-    await supabase
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase
       .from("tasks")
       .insert({ title, priority, category, due_at });
+    if (error) console.error("createTask insert failed:", error);
   }
 
   revalidatePath("/");
@@ -45,9 +49,13 @@ export async function toggleTask(formData: FormData) {
   const done = formData.get("done") === "true";
   if (!id) return;
 
-  if (supabaseConfigured) {
-    const supabase = await getServerSupabase();
-    await supabase.from("tasks").update({ done: !done }).eq("id", id);
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase
+      .from("tasks")
+      .update({ done: !done })
+      .eq("id", id);
+    if (error) console.error("toggleTask update failed:", error);
   }
 
   revalidatePath("/");
@@ -59,9 +67,10 @@ export async function deleteTask(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  if (supabaseConfigured) {
-    const supabase = await getServerSupabase();
-    await supabase.from("tasks").delete().eq("id", id);
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) console.error("deleteTask failed:", error);
   }
 
   revalidatePath("/");
@@ -73,9 +82,10 @@ export async function createNote(formData: FormData) {
   const content = String(formData.get("content") ?? "").trim();
   if (!content) return;
 
-  if (supabaseConfigured) {
-    const supabase = await getServerSupabase();
-    await supabase.from("notes").insert({ content });
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase.from("notes").insert({ content });
+    if (error) console.error("createNote insert failed:", error);
   }
 
   revalidatePath("/");

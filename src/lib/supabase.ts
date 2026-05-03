@@ -29,3 +29,4 @@ export function getServiceSupabase() {
 }
 
 export const supabaseConfigured = Boolean(url && anonKey);
+export const serviceSupabaseConfigured = Boolean(url && serviceKey);

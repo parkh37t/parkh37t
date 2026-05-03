@@ -1,5 +1,8 @@
 import { endOfDay, endOfWeek, startOfDay, startOfWeek } from "date-fns";
-import { getServerSupabase, supabaseConfigured } from "@/lib/supabase";
+import {
+  getServiceSupabase,
+  serviceSupabaseConfigured,
+} from "@/lib/supabase";
 import type { Event, Task } from "@/types";
 
 const FALLBACK: Task[] = [
@@ -30,8 +33,8 @@ const FALLBACK: Task[] = [
 ];
 
 export async function listTasks(): Promise<Task[]> {
-  if (!supabaseConfigured) return FALLBACK;
-  const supabase = await getServerSupabase();
+  if (!serviceSupabaseConfigured) return FALLBACK;
+  const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from("tasks")
     .select("*")
@@ -44,14 +47,14 @@ export async function listTasksWithDueBetween(
   from: Date,
   to: Date,
 ): Promise<Task[]> {
-  if (!supabaseConfigured) {
+  if (!serviceSupabaseConfigured) {
     return FALLBACK.filter((t) => {
       if (!t.dueAt) return false;
       const d = new Date(t.dueAt).getTime();
       return d >= from.getTime() && d <= to.getTime();
     });
   }
-  const supabase = await getServerSupabase();
+  const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from("tasks")
     .select("*")
