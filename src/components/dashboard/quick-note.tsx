@@ -1,4 +1,5 @@
 import { listRecentNotes } from "@/lib/notes";
+import { createNote } from "@/lib/actions";
 import { format } from "date-fns";
 
 export async function QuickNote() {
@@ -11,10 +12,11 @@ export async function QuickNote() {
         <span className="chip bg-accent-amber/10 text-accent-amber">빠른 캡처</span>
       </header>
 
-      <form action="/api/notes" method="post" className="flex flex-col gap-2">
+      <form action={createNote} className="flex flex-col gap-2">
         <textarea
           name="content"
           rows={3}
+          required
           placeholder="떠오른 생각을 적어두세요…"
           className="resize-none rounded-lg border border-zinc-200 bg-white p-2 text-sm focus:border-accent-violet focus:outline-none focus:ring-1 focus:ring-accent-violet dark:border-zinc-700 dark:bg-zinc-900"
         />
