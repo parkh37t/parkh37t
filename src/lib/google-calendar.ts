@@ -129,6 +129,7 @@ async function getTargetCalendarId(): Promise<{
 export async function createTaskEvent(input: {
   title: string;
   dueAt: string;
+  endsAt?: string | null;
   description?: string;
 }): Promise<string | null> {
   const { auth, calendarId } = await getTargetCalendarId();
@@ -136,7 +137,9 @@ export async function createTaskEvent(input: {
   const calendar = google.calendar({ version: "v3", auth });
 
   const start = new Date(input.dueAt);
-  const end = new Date(start.getTime() + 30 * 60 * 1000);
+  const end = input.endsAt
+    ? new Date(input.endsAt)
+    : new Date(start.getTime() + 30 * 60 * 1000);
 
   try {
     const res = await calendar.events.insert({
@@ -153,6 +156,41 @@ export async function createTaskEvent(input: {
   } catch (e) {
     console.error("createTaskEvent failed:", e);
     return null;
+  }
+}
+
+export async function updateTaskEvent(
+  eventId: string,
+  input: {
+    title: string;
+    dueAt: string;
+    endsAt?: string | null;
+    description?: string;
+  },
+): Promise<void> {
+  const { auth, calendarId } = await getTargetCalendarId();
+  if (!auth || !calendarId) return;
+  const calendar = google.calendar({ version: "v3", auth });
+
+  const start = new Date(input.dueAt);
+  const end = input.endsAt
+    ? new Date(input.endsAt)
+    : new Date(start.getTime() + 30 * 60 * 1000);
+
+  try {
+    await calendar.events.patch({
+      calendarId,
+      eventId,
+      requestBody: {
+        summary: input.title,
+        description:
+          input.description ?? "Parkh37t Dashboard 할 일에서 동기화됨",
+        start: { dateTime: start.toISOString(), timeZone: APP_TIMEZONE },
+        end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
+      },
+    });
+  } catch (e) {
+    console.error("updateTaskEvent failed:", e);
   }
 }
 

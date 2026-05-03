@@ -90,11 +90,12 @@ export async function listTaskEventsBetween(
 
 function taskToEvent(task: Task): Event {
   const startsAt = task.dueAt ?? new Date().toISOString();
+  const endsAt = task.endsAt ?? startsAt;
   return {
     id: `task-${task.id}`,
     title: task.title,
     startsAt,
-    endsAt: startsAt,
+    endsAt,
     location: null,
     category: task.category ?? "default",
     source: "local",
@@ -109,6 +110,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     priority: row.priority as Task["priority"],
     category: row.category as Task["category"],
     dueAt: (row.due_at as string | null) ?? null,
+    endsAt: (row.ends_at as string | null) ?? null,
     googleEventId: (row.google_event_id as string | null) ?? null,
     createdAt: String(row.created_at),
   };
