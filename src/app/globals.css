@@ -13,16 +13,23 @@
 
   body {
     @apply bg-surface text-ink antialiased;
+    background-image:
+      radial-gradient(at 12% 8%, rgba(167, 139, 250, 0.18), transparent 55%),
+      radial-gradient(at 90% 0%, rgba(192, 132, 252, 0.14), transparent 50%),
+      radial-gradient(at 60% 100%, rgba(165, 180, 252, 0.18), transparent 55%);
+    background-attachment: fixed;
   }
 
   .dark body {
     @apply bg-surface-dark text-zinc-100;
+    background-image: none;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-card bg-white shadow-card border border-zinc-100/80 p-5;
+    @apply rounded-card bg-white shadow-card p-6 lg:p-7;
+    border: 1px solid #f1f1f5;
   }
 
   .card-interactive {
@@ -31,10 +38,32 @@
 
   .dark .card,
   .dark .card-interactive {
-    @apply bg-zinc-900 border-zinc-800;
+    @apply bg-zinc-900;
+    border-color: #27272a;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 h-7 text-xs font-semibold;
+  }
+
+  .grad-text {
+    background: linear-gradient(120deg, #f472b6, #a855f7 45%, #22d3ee);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #e5e7eb;
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
