@@ -2,7 +2,7 @@ import { CheckSquare, Plus } from "lucide-react";
 import { listTasks } from "@/lib/tasks";
 import { categoryLabels } from "@/lib/theme";
 import { createTask } from "@/lib/actions";
-import { TaskItem } from "@/components/dashboard/task-item";
+import { TaskPager } from "@/components/dashboard/task-pager";
 import type { Category } from "@/types";
 
 const CATEGORIES: Category[] = ["default", "work", "health", "study", "personal"];
@@ -10,7 +10,8 @@ const CATEGORIES: Category[] = ["default", "work", "health", "study", "personal"
 export async function TaskList({ expanded = false }: { expanded?: boolean }) {
   const tasks = await listTasks().catch(() => []);
   const ongoing = tasks.filter((t) => !t.done);
-  const visible = expanded ? tasks : ongoing.slice(0, 30);
+  const listed = expanded ? tasks : ongoing;
+  const pageSize = expanded ? 10 : 5;
 
   return (
     <section className="card flex flex-col">
@@ -102,17 +103,13 @@ export async function TaskList({ expanded = false }: { expanded?: boolean }) {
         </button>
       </form>
 
-      {visible.length === 0 ? (
-        <div className="text-center py-6 text-[13px] text-zinc-400">
-          진행중인 할 일이 없습니다.
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2 max-h-[420px] overflow-y-auto scrollbar-thin pr-1">
-          {visible.map((task) => (
-            <TaskItem key={task.id} task={task} />
-          ))}
-        </ul>
-      )}
+      <TaskPager
+        tasks={listed}
+        pageSize={pageSize}
+        emptyMessage={
+          expanded ? "할 일이 없습니다. 오늘은 쉬어가요." : "진행중인 할 일이 없습니다."
+        }
+      />
     </section>
   );
 }
