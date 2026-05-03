@@ -45,3 +45,55 @@ export function isSameDayKst(a: string | Date, b: string | Date): boolean {
   };
   return formatWith(a, fmt) === formatWith(b, fmt);
 }
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+function shiftToKst(d: Date): Date {
+  return new Date(d.getTime() + KST_OFFSET_MS);
+}
+
+export function startOfDayKst(d: Date = new Date()): Date {
+  const shifted = shiftToKst(d);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return new Date(shifted.getTime() - KST_OFFSET_MS);
+}
+
+export function endOfDayKst(d: Date = new Date()): Date {
+  const start = startOfDayKst(d);
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+}
+
+export function startOfWeekKst(
+  d: Date = new Date(),
+  weekStartsOn: 0 | 1 = 1,
+): Date {
+  const dayStart = startOfDayKst(d);
+  const kstAsUtc = shiftToKst(dayStart);
+  const dow = kstAsUtc.getUTCDay();
+  const diff = (dow - weekStartsOn + 7) % 7;
+  return new Date(dayStart.getTime() - diff * 24 * 60 * 60 * 1000);
+}
+
+export function endOfWeekKst(
+  d: Date = new Date(),
+  weekStartsOn: 0 | 1 = 1,
+): Date {
+  return new Date(
+    startOfWeekKst(d, weekStartsOn).getTime() + 7 * 24 * 60 * 60 * 1000 - 1,
+  );
+}
+
+export function formatTodayLabelKst(d: Date = new Date()): string {
+  const month = formatWith(d, { month: "numeric" }).replace(/\D/g, "");
+  const day = formatWith(d, { day: "numeric" }).replace(/\D/g, "");
+  const weekday = formatWith(d, { weekday: "long" });
+  return `${month}월 ${day}일 (${weekday})`;
+}
+
+export function formatFullDateLabelKst(d: Date = new Date()): string {
+  const year = formatWith(d, { year: "numeric" }).replace(/\D/g, "");
+  const month = formatWith(d, { month: "numeric" }).replace(/\D/g, "");
+  const day = formatWith(d, { day: "numeric" }).replace(/\D/g, "");
+  const weekday = formatWith(d, { weekday: "long" });
+  return `${year}년 ${month}월 ${day}일 · ${weekday}`;
+}

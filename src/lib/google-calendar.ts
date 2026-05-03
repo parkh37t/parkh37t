@@ -1,6 +1,11 @@
 import { google } from "googleapis";
-import { addDays, endOfDay, startOfDay, startOfWeek } from "date-fns";
 import { cookies } from "next/headers";
+import {
+  endOfDayKst,
+  endOfWeekKst,
+  startOfDayKst,
+  startOfWeekKst,
+} from "@/lib/format-time";
 import type { Event } from "@/types";
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
@@ -101,12 +106,12 @@ async function fetchEvents(timeMin: Date, timeMax: Date): Promise<Event[]> {
 
 export async function listTodaysEvents(): Promise<Event[]> {
   const now = new Date();
-  return fetchEvents(startOfDay(now), endOfDay(now));
+  return fetchEvents(startOfDayKst(now), endOfDayKst(now));
 }
 
 export async function listWeekEvents(): Promise<Event[]> {
-  const start = startOfWeek(new Date(), { weekStartsOn: 1 });
-  return fetchEvents(start, addDays(start, 7));
+  const now = new Date();
+  return fetchEvents(startOfWeekKst(now), endOfWeekKst(now));
 }
 
 export async function listEventsBetween(

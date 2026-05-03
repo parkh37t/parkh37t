@@ -86,22 +86,20 @@ export async function TaskList({ expanded = false }: { expanded?: boolean }) {
             />
           </div>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] text-zinc-400 flex-1">
-            날짜만 입력해도 캘린더에 표시됩니다. 등록 후 ✏️로 수정 가능.
-          </p>
-          <button
-            type="submit"
-            className="h-11 px-5 rounded-full text-white font-semibold text-[13.5px] flex items-center justify-center gap-1.5 hover:opacity-95 active:scale-[.98] transition"
-            style={{
-              background: "#7C6BF6",
-              boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
-            }}
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.4} />
-            추가
-          </button>
-        </div>
+        <p className="text-[11px] text-zinc-400">
+          날짜만 입력해도 캘린더에 표시됩니다. 등록 후 ✏️로 수정 가능.
+        </p>
+        <button
+          type="submit"
+          className="self-end inline-flex h-11 items-center justify-center gap-1.5 rounded-full px-5 text-[13.5px] font-semibold text-white transition hover:opacity-95 active:scale-[.98]"
+          style={{
+            background: "#7C6BF6",
+            boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
+          }}
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.4} />
+          추가
+        </button>
       </form>
 
       {visible.length === 0 ? (
