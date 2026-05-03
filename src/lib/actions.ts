@@ -20,6 +20,18 @@ const VALID_CATEGORIES: Category[] = [
   "default",
 ];
 
+const APP_TIMEZONE_OFFSET =
+  process.env.APP_TIMEZONE_OFFSET?.trim() || "+09:00";
+
+function parseDueAt(raw: string): string | null {
+  if (!raw) return null;
+  const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)
+    ? `${raw}:00`
+    : raw;
+  const parsed = new Date(`${withSeconds}${APP_TIMEZONE_OFFSET}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 export async function createTask(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const priorityRaw = String(formData.get("priority") ?? "");
@@ -32,7 +44,7 @@ export async function createTask(formData: FormData) {
   const category = VALID_CATEGORIES.includes(categoryRaw as Category)
     ? (categoryRaw as Category)
     : "default";
-  const due_at = dueRaw ? new Date(dueRaw).toISOString() : null;
+  const due_at = parseDueAt(dueRaw);
   if (!title) return;
 
   if (serviceSupabaseConfigured) {
