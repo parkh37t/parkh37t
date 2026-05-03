@@ -38,9 +38,14 @@ const config: Config = {
           "0%,100%": { boxShadow: "0 0 0 0 rgba(124,107,246,0.30)" },
           "50%": { boxShadow: "0 0 0 6px rgba(124,107,246,0)" },
         },
+        fadeInUp: {
+          "0%": { opacity: "0", transform: "translateY(4px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         softPulse: "softPulse 2.4s ease-in-out infinite",
+        fadeInUp: "fadeInUp 0.18s ease-out",
       },
     },
   },
