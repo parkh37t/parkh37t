@@ -1,5 +1,6 @@
+import { endOfDay, endOfWeek, startOfDay, startOfWeek } from "date-fns";
 import { getServerSupabase, supabaseConfigured } from "@/lib/supabase";
-import type { Task } from "@/types";
+import type { Event, Task } from "@/types";
 
 const FALLBACK: Task[] = [
   {
@@ -37,6 +38,63 @@ export async function listTasks(): Promise<Task[]> {
     .order("created_at", { ascending: false });
   if (error || !data) return FALLBACK;
   return data.map(rowToTask);
+}
+
+export async function listTasksWithDueBetween(
+  from: Date,
+  to: Date,
+): Promise<Task[]> {
+  if (!supabaseConfigured) {
+    return FALLBACK.filter((t) => {
+      if (!t.dueAt) return false;
+      const d = new Date(t.dueAt).getTime();
+      return d >= from.getTime() && d <= to.getTime();
+    });
+  }
+  const supabase = await getServerSupabase();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .not("due_at", "is", null)
+    .gte("due_at", from.toISOString())
+    .lte("due_at", to.toISOString())
+    .order("due_at", { ascending: true });
+  if (error || !data) return [];
+  return data.map(rowToTask);
+}
+
+export async function listTodaysTaskEvents(): Promise<Event[]> {
+  const now = new Date();
+  const tasks = await listTasksWithDueBetween(startOfDay(now), endOfDay(now));
+  return tasks.map(taskToEvent);
+}
+
+export async function listWeekTaskEvents(): Promise<Event[]> {
+  const start = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const end = endOfWeek(new Date(), { weekStartsOn: 1 });
+  const tasks = await listTasksWithDueBetween(start, end);
+  return tasks.map(taskToEvent);
+}
+
+export async function listTaskEventsBetween(
+  start: Date,
+  end: Date,
+): Promise<Event[]> {
+  const tasks = await listTasksWithDueBetween(start, end);
+  return tasks.map(taskToEvent);
+}
+
+function taskToEvent(task: Task): Event {
+  const startsAt = task.dueAt ?? new Date().toISOString();
+  return {
+    id: `task-${task.id}`,
+    title: task.title,
+    startsAt,
+    endsAt: startsAt,
+    location: null,
+    category: task.category ?? "default",
+    source: "local",
+  };
 }
 
 function rowToTask(row: Record<string, unknown>): Task {
