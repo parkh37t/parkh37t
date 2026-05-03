@@ -6,6 +6,11 @@ import {
   startOfDayKst,
   startOfWeekKst,
 } from "@/lib/format-time";
+import {
+  getStoredTokens,
+  saveStoredTokens,
+  type StoredTokens,
+} from "@/lib/google-tokens";
 import type { Event } from "@/types";
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
@@ -40,30 +45,61 @@ export function getAuthUrl() {
   });
 }
 
+async function loadTokensWithCookieFallback(): Promise<StoredTokens | null> {
+  const stored = await getStoredTokens();
+  if (stored) return stored;
+
+  const cookieToken = (await cookies()).get(TOKEN_COOKIE)?.value;
+  if (!cookieToken) return null;
+
+  try {
+    const parsed = JSON.parse(cookieToken);
+    if (!parsed?.access_token) return null;
+    const migrated: StoredTokens = {
+      access_token: parsed.access_token,
+      refresh_token: parsed.refresh_token ?? null,
+      expiry_date: parsed.expiry_date ?? null,
+      scope: parsed.scope ?? null,
+      token_type: parsed.token_type ?? null,
+    };
+    await saveStoredTokens(migrated);
+    console.log("[google] migrated tokens from cookie to DB");
+    return migrated;
+  } catch (e) {
+    console.warn("[google] cookie migration failed:", e);
+    return null;
+  }
+}
+
 export async function googleConnected(): Promise<boolean> {
   if (!googleConfigured()) return false;
-  const token = (await cookies()).get(TOKEN_COOKIE)?.value;
-  return Boolean(token);
+  const stored = await loadTokensWithCookieFallback();
+  return Boolean(stored);
 }
 
 const REFRESH_LEEWAY_MS = 60 * 1000;
 
 async function getAuthorizedClient() {
   if (!googleConfigured()) return null;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(TOKEN_COOKIE)?.value;
-  if (!token) return null;
 
-  const credentials = JSON.parse(token);
+  const stored = await loadTokensWithCookieFallback();
+  if (!stored) return null;
+
   const oauth = makeOAuthClient();
-  oauth.setCredentials(credentials);
+  oauth.setCredentials({
+    access_token: stored.access_token,
+    refresh_token: stored.refresh_token ?? undefined,
+    expiry_date: stored.expiry_date ?? undefined,
+    scope: stored.scope ?? undefined,
+    token_type: stored.token_type ?? undefined,
+  });
 
   const expired =
-    typeof credentials.expiry_date === "number" &&
-    credentials.expiry_date <= Date.now() + REFRESH_LEEWAY_MS;
+    typeof stored.expiry_date === "number" &&
+    stored.expiry_date <= Date.now() + REFRESH_LEEWAY_MS;
 
   if (expired) {
-    if (!credentials.refresh_token) {
+    if (!stored.refresh_token) {
       console.warn(
         "[google] access_token expired but no refresh_token; user must reconnect",
       );
@@ -71,15 +107,21 @@ async function getAuthorizedClient() {
     }
     try {
       const { credentials: refreshed } = await oauth.refreshAccessToken();
-      const merged = { ...credentials, ...refreshed };
-      oauth.setCredentials(merged);
-      cookieStore.set(TOKEN_COOKIE, JSON.stringify(merged), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+      const merged: StoredTokens = {
+        access_token: refreshed.access_token ?? stored.access_token,
+        refresh_token: refreshed.refresh_token ?? stored.refresh_token,
+        expiry_date: refreshed.expiry_date ?? stored.expiry_date,
+        scope: refreshed.scope ?? stored.scope,
+        token_type: refreshed.token_type ?? stored.token_type,
+      };
+      oauth.setCredentials({
+        access_token: merged.access_token,
+        refresh_token: merged.refresh_token ?? undefined,
+        expiry_date: merged.expiry_date ?? undefined,
+        scope: merged.scope ?? undefined,
+        token_type: merged.token_type ?? undefined,
       });
+      await saveStoredTokens(merged);
       console.log(
         `[google] refreshed access_token, new expiry=${merged.expiry_date}`,
       );
