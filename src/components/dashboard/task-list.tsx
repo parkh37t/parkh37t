@@ -1,131 +1,120 @@
-import { ListChecks, Plus } from "lucide-react";
+import { CheckSquare, Plus } from "lucide-react";
 import { listTasks } from "@/lib/tasks";
+import { categoryLabels } from "@/lib/theme";
 import { createTask } from "@/lib/actions";
 import { TaskItem } from "@/components/dashboard/task-item";
+import type { Category } from "@/types";
+
+const CATEGORIES: Category[] = ["default", "work", "health", "study", "personal"];
 
 export async function TaskList({ expanded = false }: { expanded?: boolean }) {
   const tasks = await listTasks().catch(() => []);
-  const visible = expanded ? tasks : tasks.slice(0, 6);
+  const ongoing = tasks.filter((t) => !t.done);
+  const visible = expanded ? tasks : ongoing.slice(0, 30);
 
   return (
-    <div className="card-interactive flex flex-col gap-4">
-      <header className="flex items-baseline justify-between">
-        <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-accent-emerald/10 p-1.5 text-accent-emerald">
-            <ListChecks className="h-4 w-4" />
-          </span>
-          <h2 className="text-lg font-semibold">할 일</h2>
+    <section className="card flex flex-col">
+      <header className="flex items-start justify-between gap-3 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-sm bg-gradient-to-br from-emerald-400 to-teal-500">
+            <CheckSquare className="h-5 w-5" strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[18px] lg:text-[20px] font-bold leading-tight text-ink truncate">
+              할 일
+            </div>
+            <div className="text-[12.5px] text-zinc-400 mt-0.5">오늘의 진행</div>
+          </div>
         </div>
-        <span className="chip bg-accent-emerald/10 text-accent-emerald">
-          {tasks.filter((t) => !t.done).length}개 진행중
-        </span>
+        <div className="px-2.5 h-7 rounded-full flex items-center text-[12px] font-semibold whitespace-nowrap bg-emerald-50 text-emerald-700">
+          {ongoing.length}개 진행중
+        </div>
       </header>
 
       <form
         action={createTask}
-        className="flex flex-col gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 dark:border-zinc-800 dark:bg-zinc-800/40"
+        className="bg-[#FAFAFC] border border-zinc-100 rounded-2xl p-3.5 flex flex-col gap-2.5 mb-4"
       >
         <input
           name="title"
           required
-          placeholder="새 할 일 추가…"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-accent-violet focus:outline-none focus:ring-1 focus:ring-accent-violet dark:border-zinc-700 dark:bg-zinc-900"
+          placeholder="새 할 일 추가..."
+          className="w-full h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[14px] placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
         />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <select
             name="priority"
             defaultValue="med"
-            aria-label="우선순위"
-            className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
           >
-            <option value="low">low</option>
-            <option value="med">med</option>
-            <option value="high">high</option>
+            <option value="low">low · 낮음</option>
+            <option value="med">med · 보통</option>
+            <option value="high">high · 높음</option>
           </select>
           <select
             name="category"
             defaultValue="default"
-            aria-label="카테고리"
-            className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
           >
-            <option value="default">분류</option>
-            <option value="work">work</option>
-            <option value="personal">personal</option>
-            <option value="health">health</option>
-            <option value="study">study</option>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {categoryLabels[c]}
+              </option>
+            ))}
           </select>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label
-            htmlFor="task-due-date"
-            className="text-[11px] text-ink-muted"
-          >
-            날짜
-          </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input
-            id="task-due-date"
             type="date"
             name="due_date"
             aria-label="날짜"
-            className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
           />
-          <label
-            htmlFor="task-due-time"
-            className="text-[11px] text-ink-muted"
-          >
-            시작
-          </label>
-          <input
-            id="task-due-time"
-            type="time"
-            name="due_time"
-            aria-label="시작 시각"
-            className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
-          <span className="text-ink-muted">~</span>
-          <label
-            htmlFor="task-end-time"
-            className="text-[11px] text-ink-muted"
-          >
-            종료
-          </label>
-          <input
-            id="task-end-time"
-            type="time"
-            name="end_time"
-            aria-label="종료 시각"
-            className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="time"
+              name="due_time"
+              aria-label="시작 시각"
+              className="flex-1 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+            />
+            <span className="text-zinc-400 text-sm">~</span>
+            <input
+              type="time"
+              name="end_time"
+              aria-label="종료 시각"
+              className="flex-1 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] text-zinc-400 flex-1">
+            날짜만 입력해도 캘린더에 표시됩니다. 등록 후 ✏️로 수정 가능.
+          </p>
           <button
             type="submit"
-            className="ml-auto inline-flex min-w-[96px] items-center justify-center gap-1 rounded-lg bg-accent-violet px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-violet/90 hover:shadow active:translate-y-px"
+            className="h-11 px-5 rounded-full text-white font-semibold text-[13.5px] flex items-center justify-center gap-1.5 hover:opacity-95 active:scale-[.98] transition"
+            style={{
+              background: "#7C6BF6",
+              boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
+            }}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" strokeWidth={2.4} />
             추가
           </button>
         </div>
-        <p className="text-[11px] text-ink-muted">
-          날짜만 입력해도 캘린더에 표시됩니다. 시각을 비워두면 시작 0시
-          기준으로 등록됩니다. 등록한 후 ✏️ 아이콘으로 수정할 수 있습니다.
-        </p>
       </form>
 
       {visible.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-12 text-center">
-          <span className="rounded-full bg-zinc-100 p-3 text-ink-muted dark:bg-zinc-800">
-            <ListChecks className="h-5 w-5" />
-          </span>
-          <p className="text-sm text-ink-muted">
-            할 일이 없습니다. 오늘은 쉬어가요.
-          </p>
+        <div className="text-center py-6 text-[13px] text-zinc-400">
+          진행중인 할 일이 없습니다.
         </div>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-2 max-h-[420px] overflow-y-auto scrollbar-thin pr-1">
           {visible.map((task) => (
             <TaskItem key={task.id} task={task} />
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

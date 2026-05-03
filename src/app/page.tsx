@@ -2,22 +2,28 @@ import { TodaySchedule } from "@/components/dashboard/today-schedule";
 import { TaskList } from "@/components/dashboard/task-list";
 import { WeekView } from "@/components/dashboard/week-view";
 import { QuickNote } from "@/components/dashboard/quick-note";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 
 export default function DashboardPage() {
+  const now = new Date();
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
-      <section className="lg:col-span-2">
+    <>
+      <div className="mb-7 lg:mb-9">
+        <div className="text-[13px] text-ink-muted font-medium mb-1.5">
+          {format(now, "yyyy년 M월 d일 · EEEE", { locale: ko })}
+        </div>
+        <h1 className="text-[32px] lg:text-[44px] font-extrabold tracking-tight leading-[1.05]">
+          안녕하세요, <span className="grad-text">오늘</span>도 가볍게.
+        </h1>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
         <TodaySchedule />
-      </section>
-      <section>
         <TaskList />
-      </section>
-      <section className="lg:col-span-2">
         <WeekView />
-      </section>
-      <section>
         <QuickNote />
-      </section>
-    </div>
+      </div>
+    </>
   );
 }

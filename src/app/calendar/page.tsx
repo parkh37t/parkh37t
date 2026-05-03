@@ -1,5 +1,5 @@
 import { addMonths, startOfMonth } from "date-fns";
-import { CalendarRange, Link as LinkIcon } from "lucide-react";
+import { Link as LinkIcon } from "lucide-react";
 import { listEventsBetween } from "@/lib/google-calendar";
 import { listTaskEventsBetween } from "@/lib/tasks";
 import {
@@ -32,36 +32,42 @@ export default async function CalendarPage({
   const events = [...calendarEvents, ...taskEvents];
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-accent-violet/10 p-2 text-accent-violet">
-            <CalendarRange className="h-5 w-5" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold">캘린더</h1>
-            <p className="text-xs text-ink-muted">
-              Wylie 컨버전스 2본부 캘린더 + 마감일 있는 할 일
-            </p>
+    <>
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-[13px] text-ink-muted font-medium mb-1.5">
+            Calendar
           </div>
+          <h1 className="text-[32px] lg:text-[40px] font-extrabold tracking-tight">
+            {range.label}
+          </h1>
+          <p className="mt-1.5 text-[12.5px] text-zinc-400">
+            Wylie 컨버전스 2본부 + 마감일 있는 할 일
+          </p>
         </div>
         <a
           href="/api/google/auth"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent-violet px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-violet/90 hover:shadow"
+          className="inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-95 active:scale-[.98]"
+          style={{
+            background: "#7C6BF6",
+            boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
+          }}
         >
           <LinkIcon className="h-4 w-4" />
           Google Calendar 연결
         </a>
-      </header>
+      </div>
 
-      <ViewSwitcher view={view} offset={offset} label={range.label} />
+      <div className="mb-5">
+        <ViewSwitcher view={view} offset={offset} label={range.label} />
+      </div>
 
       {view === "month" ? (
         <MonthGrid reference={range.reference} events={events} />
       ) : (
         <MultiMonthGrid view={view} reference={range.reference} events={events} />
       )}
-    </div>
+    </>
   );
 }
 
