@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  html {
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  body {
+    @apply bg-surface text-ink antialiased;
+  }
+
+  .dark body {
+    @apply bg-surface-dark text-zinc-100;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card bg-white shadow-card border border-zinc-100/80 p-5;
+  }
+
+  .dark .card {
+    @apply bg-zinc-900 border-zinc-800;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}
