@@ -10,6 +10,8 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI ?? "";
 const TARGET_CALENDAR_NAME =
   process.env.GOOGLE_CALENDAR_NAME?.trim() || "Wylie 컨버전스 2본부";
 
+const APP_TIMEZONE = process.env.APP_TIMEZONE?.trim() || "Asia/Seoul";
+
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
@@ -143,8 +145,8 @@ export async function createTaskEvent(input: {
         summary: input.title,
         description:
           input.description ?? "Parkh37t Dashboard 할 일에서 동기화됨",
-        start: { dateTime: start.toISOString() },
-        end: { dateTime: end.toISOString() },
+        start: { dateTime: start.toISOString(), timeZone: APP_TIMEZONE },
+        end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
       },
     });
     return res.data.id ?? null;
