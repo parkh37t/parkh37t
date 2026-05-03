@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { TOKEN_COOKIE, makeOAuthClient } from "@/lib/google-calendar";
+import { saveStoredTokens } from "@/lib/google-tokens";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -8,6 +9,22 @@ export async function GET(req: NextRequest) {
   }
   const oauth = makeOAuthClient();
   const { tokens } = await oauth.getToken(code);
+
+  if (tokens.access_token) {
+    await saveStoredTokens({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token ?? null,
+      expiry_date: tokens.expiry_date ?? null,
+      scope: tokens.scope ?? null,
+      token_type: tokens.token_type ?? null,
+    });
+    console.log(
+      `[google/callback] tokens saved to DB, expiry=${tokens.expiry_date}`,
+    );
+  } else {
+    console.warn("[google/callback] no access_token returned by Google");
+  }
+
   const res = NextResponse.redirect(new URL("/calendar", req.url));
   res.cookies.set(TOKEN_COOKIE, JSON.stringify(tokens), {
     httpOnly: true,

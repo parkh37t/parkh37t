@@ -39,6 +39,16 @@ create table if not exists notes (
   created_at timestamptz not null default now()
 );
 
+create table if not exists google_tokens (
+  id text primary key default 'default' check (id = 'default'),
+  access_token text not null,
+  refresh_token text,
+  expiry_date bigint,
+  scope text,
+  token_type text,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists tasks_user_done_idx on tasks(user_id, done);
 create index if not exists events_user_starts_idx on events(user_id, starts_at);
 create index if not exists notes_user_created_idx on notes(user_id, created_at desc);
@@ -47,6 +57,7 @@ create index if not exists notes_user_created_idx on notes(user_id, created_at d
 alter table tasks enable row level security;
 alter table events enable row level security;
 alter table notes enable row level security;
+alter table google_tokens enable row level security;
 
 create policy "tasks_owner" on tasks
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
