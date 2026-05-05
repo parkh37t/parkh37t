@@ -79,11 +79,43 @@ export async function googleConnected(): Promise<boolean> {
 
 const REFRESH_LEEWAY_MS = 60 * 1000;
 
+function attachTokenPersistence(
+  oauth: ReturnType<typeof makeOAuthClient>,
+  base: StoredTokens,
+) {
+  // googleapis emits 'tokens' whenever it auto-refreshes the access_token
+  // mid-call. Persist those tokens so the next call doesn't refresh again.
+  oauth.on("tokens", (refreshed) => {
+    const merged: StoredTokens = {
+      access_token: refreshed.access_token ?? base.access_token,
+      refresh_token: refreshed.refresh_token ?? base.refresh_token,
+      expiry_date: refreshed.expiry_date ?? base.expiry_date,
+      scope: refreshed.scope ?? base.scope,
+      token_type: refreshed.token_type ?? base.token_type,
+    };
+    saveStoredTokens(merged)
+      .then(() =>
+        console.log(
+          `[google] auto-refresh persisted, expiry=${merged.expiry_date}`,
+        ),
+      )
+      .catch((e) => console.error("[google] auto-refresh persist failed:", e));
+  });
+}
+
 async function getAuthorizedClient() {
-  if (!googleConfigured()) return null;
+  if (!googleConfigured()) {
+    console.warn("[google] not configured (missing CLIENT_ID/SECRET/REDIRECT)");
+    return null;
+  }
 
   const stored = await loadTokensWithCookieFallback();
-  if (!stored) return null;
+  if (!stored) {
+    console.warn(
+      "[google] no stored tokens; user must reconnect at /api/google/auth",
+    );
+    return null;
+  }
 
   const oauth = makeOAuthClient();
   oauth.setCredentials({
@@ -93,6 +125,7 @@ async function getAuthorizedClient() {
     scope: stored.scope ?? undefined,
     token_type: stored.token_type ?? undefined,
   });
+  attachTokenPersistence(oauth, stored);
 
   const expired =
     typeof stored.expiry_date === "number" &&
@@ -143,26 +176,39 @@ function matchesTargetCalendar(summary: string | null | undefined) {
   return normalize(summary) === normalize(TARGET_CALENDAR_NAME);
 }
 
+type CalendarIdCache = { value: string; expiresAt: number };
+let calendarIdCache: CalendarIdCache | null = null;
+const CALENDAR_ID_TTL_MS = 5 * 60 * 1000;
+
+function clearCalendarIdCache() {
+  calendarIdCache = null;
+}
+
 async function resolveCalendarIds(
   auth: NonNullable<Awaited<ReturnType<typeof getAuthorizedClient>>>,
 ): Promise<string[]> {
-  const calendar = google.calendar({ version: "v3", auth });
-  const list = await calendar.calendarList.list();
-  const items = list.data.items ?? [];
-  const matched = items.filter((c) =>
-    matchesTargetCalendar(c.summary ?? c.summaryOverride),
-  );
-  if (matched.length === 0) {
-    const available = items
-      .map((c) => c.summary ?? c.summaryOverride)
-      .filter(Boolean);
-    console.warn(
-      `[google-calendar] no calendar matched "${TARGET_CALENDAR_NAME}". Available: ${JSON.stringify(available)}`,
+  try {
+    const calendar = google.calendar({ version: "v3", auth });
+    const list = await calendar.calendarList.list();
+    const items = list.data.items ?? [];
+    const matched = items.filter((c) =>
+      matchesTargetCalendar(c.summary ?? c.summaryOverride),
     );
+    if (matched.length === 0) {
+      const available = items
+        .map((c) => c.summary ?? c.summaryOverride)
+        .filter(Boolean);
+      console.warn(
+        `[google-calendar] no calendar matched "${TARGET_CALENDAR_NAME}". Available: ${JSON.stringify(available)}`,
+      );
+    }
+    return matched
+      .map((c) => c.id)
+      .filter((id): id is string => Boolean(id));
+  } catch (e) {
+    console.error("[google-calendar] calendarList.list failed:", e);
+    return [];
   }
-  return matched
-    .map((c) => c.id)
-    .filter((id): id is string => Boolean(id));
 }
 
 async function fetchEvents(timeMin: Date, timeMax: Date): Promise<Event[]> {
@@ -174,23 +220,29 @@ async function fetchEvents(timeMin: Date, timeMax: Date): Promise<Event[]> {
 
   const all: Event[] = [];
   for (const calendarId of calendarIds) {
-    const res = await calendar.events.list({
-      calendarId,
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      singleEvents: true,
-      orderBy: "startTime",
-    });
-    for (const it of res.data.items ?? []) {
-      all.push({
-        id: String(it.id),
-        title: it.summary ?? "(제목 없음)",
-        startsAt: it.start?.dateTime ?? it.start?.date ?? new Date().toISOString(),
-        endsAt: it.end?.dateTime ?? it.end?.date ?? new Date().toISOString(),
-        location: it.location ?? null,
-        category: "default",
-        source: "google",
+    try {
+      const res = await calendar.events.list({
+        calendarId,
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        singleEvents: true,
+        orderBy: "startTime",
       });
+      for (const it of res.data.items ?? []) {
+        all.push({
+          id: String(it.id),
+          title: it.summary ?? "(제목 없음)",
+          startsAt:
+            it.start?.dateTime ?? it.start?.date ?? new Date().toISOString(),
+          endsAt:
+            it.end?.dateTime ?? it.end?.date ?? new Date().toISOString(),
+          location: it.location ?? null,
+          category: "default",
+          source: "google",
+        });
+      }
+    } catch (e) {
+      console.error(`[google-calendar] events.list failed for ${calendarId}:`, e);
     }
   }
   return all.sort(
@@ -221,31 +273,36 @@ async function getTargetCalendarId(): Promise<{
 }> {
   const auth = await getAuthorizedClient();
   if (!auth) return { auth: null, calendarId: null };
+
+  if (calendarIdCache && calendarIdCache.expiresAt > Date.now()) {
+    return { auth, calendarId: calendarIdCache.value };
+  }
+
   const ids = await resolveCalendarIds(auth);
-  return { auth, calendarId: ids[0] ?? null };
+  const id = ids[0] ?? null;
+  if (id) {
+    calendarIdCache = { value: id, expiresAt: Date.now() + CALENDAR_ID_TTL_MS };
+  }
+  return { auth, calendarId: id };
 }
 
-export async function createTaskEvent(input: {
-  title: string;
-  dueAt: string;
-  endsAt?: string | null;
-  description?: string;
-}): Promise<string | null> {
-  const { auth, calendarId } = await getTargetCalendarId();
-  if (!auth) {
-    console.warn(
-      "[createTaskEvent] skipped: no Google auth (missing token cookie or env vars)",
-    );
-    return null;
-  }
-  if (!calendarId) {
-    console.warn(
-      `[createTaskEvent] skipped: no calendar matching "${TARGET_CALENDAR_NAME}"`,
-    );
-    return null;
-  }
-  const calendar = google.calendar({ version: "v3", auth });
+function formatGoogleError(e: unknown): string {
+  if (!e || typeof e !== "object") return String(e);
+  const err = e as { code?: number; message?: string; status?: number };
+  return `code=${err.code ?? err.status ?? "?"} message=${err.message ?? "(no message)"}`;
+}
 
+async function tryInsertEvent(
+  auth: NonNullable<Awaited<ReturnType<typeof getAuthorizedClient>>>,
+  calendarId: string,
+  input: {
+    title: string;
+    dueAt: string;
+    endsAt?: string | null;
+    description?: string;
+  },
+): Promise<{ id: string | null; transient: boolean; error?: unknown }> {
+  const calendar = google.calendar({ version: "v3", auth });
   const start = new Date(input.dueAt);
   const end = input.endsAt
     ? new Date(input.endsAt)
@@ -262,14 +319,75 @@ export async function createTaskEvent(input: {
         end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
       },
     });
-    console.log(
-      `[createTaskEvent] inserted event id=${res.data.id} into calendar=${calendarId}`,
-    );
-    return res.data.id ?? null;
+    return { id: res.data.id ?? null, transient: false };
   } catch (e) {
-    console.error("[createTaskEvent] insert failed:", e);
+    const code = (e as { code?: number; status?: number }).code;
+    const status = (e as { code?: number; status?: number }).status;
+    const httpCode = code ?? status ?? 0;
+    const transient =
+      httpCode === 401 ||
+      httpCode === 403 ||
+      httpCode === 404 ||
+      httpCode === 429 ||
+      (httpCode >= 500 && httpCode < 600);
+    return { id: null, transient, error: e };
+  }
+}
+
+export async function createTaskEvent(input: {
+  title: string;
+  dueAt: string;
+  endsAt?: string | null;
+  description?: string;
+}): Promise<string | null> {
+  let { auth, calendarId } = await getTargetCalendarId();
+  if (!auth) {
+    console.warn(
+      `[createTaskEvent] skipped: no Google auth (title="${input.title}")`,
+    );
     return null;
   }
+  if (!calendarId) {
+    console.warn(
+      `[createTaskEvent] skipped: no calendar matching "${TARGET_CALENDAR_NAME}" (title="${input.title}")`,
+    );
+    return null;
+  }
+
+  const first = await tryInsertEvent(auth, calendarId, input);
+  if (first.id) {
+    console.log(
+      `[createTaskEvent] inserted event id=${first.id} into calendar=${calendarId} (title="${input.title}")`,
+    );
+    return first.id;
+  }
+
+  console.warn(
+    `[createTaskEvent] first attempt failed (title="${input.title}", transient=${first.transient}): ${formatGoogleError(first.error)}`,
+  );
+
+  if (!first.transient) return null;
+
+  // Retry once with a fresh client + fresh calendar id (may have rotated).
+  clearCalendarIdCache();
+  const retry = await getTargetCalendarId();
+  if (!retry.auth || !retry.calendarId) {
+    console.error(
+      `[createTaskEvent] retry skipped: auth=${Boolean(retry.auth)} calendarId=${retry.calendarId}`,
+    );
+    return null;
+  }
+  const second = await tryInsertEvent(retry.auth, retry.calendarId, input);
+  if (second.id) {
+    console.log(
+      `[createTaskEvent] inserted on retry id=${second.id} into calendar=${retry.calendarId}`,
+    );
+    return second.id;
+  }
+  console.error(
+    `[createTaskEvent] retry failed (title="${input.title}"): ${formatGoogleError(second.error)}`,
+  );
+  return null;
 }
 
 export async function updateTaskEvent(
@@ -303,7 +421,9 @@ export async function updateTaskEvent(
       },
     });
   } catch (e) {
-    console.error("updateTaskEvent failed:", e);
+    console.error(
+      `[updateTaskEvent] failed (eventId=${eventId}): ${formatGoogleError(e)}`,
+    );
   }
 }
 
@@ -314,6 +434,8 @@ export async function deleteTaskEvent(eventId: string): Promise<void> {
   try {
     await calendar.events.delete({ calendarId, eventId });
   } catch (e) {
-    console.error("deleteTaskEvent failed:", e);
+    console.error(
+      `[deleteTaskEvent] failed (eventId=${eventId}): ${formatGoogleError(e)}`,
+    );
   }
 }

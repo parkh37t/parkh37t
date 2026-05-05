@@ -1,8 +1,13 @@
 "use client";
 
-import { Clock, Pencil, Trash2, X } from "lucide-react";
+import { Clock, Pencil, RefreshCw, Trash2, X } from "lucide-react";
 import { useState, useTransition } from "react";
-import { deleteTask, toggleTask, updateTask } from "@/lib/actions";
+import {
+  deleteTask,
+  syncTaskToGoogle,
+  toggleTask,
+  updateTask,
+} from "@/lib/actions";
 import { categoryLabels, priorityBadge, priorityColors } from "@/lib/theme";
 import type { Task } from "@/types";
 
@@ -56,6 +61,7 @@ export function TaskItem({ task }: { task: Task }) {
   const category = task.category ?? "default";
   const badge = priorityBadge[priority];
   const range = formatRange(task.dueAt, task.endsAt);
+  const needsGoogleSync = Boolean(task.dueAt) && !task.googleEventId;
 
   if (editing) {
     return (
@@ -202,6 +208,22 @@ export function TaskItem({ task }: { task: Task }) {
           ) : null}
           {range ? <span className="text-zinc-200">·</span> : null}
           <span>{categoryLabels[category]}</span>
+          {needsGoogleSync ? (
+            <>
+              <span className="text-zinc-200">·</span>
+              <form action={syncTaskToGoogle}>
+                <input type="hidden" name="id" value={task.id} />
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-[2px] text-[10.5px] font-semibold text-amber-700 transition hover:bg-amber-100"
+                  title="구글 캘린더에 동기화되지 않았습니다. 클릭하여 재시도"
+                >
+                  <RefreshCw className="h-[10px] w-[10px]" />
+                  구글 미동기화
+                </button>
+              </form>
+            </>
+          ) : null}
         </div>
       </div>
       <span

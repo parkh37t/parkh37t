@@ -213,6 +213,68 @@ export async function toggleTask(formData: FormData) {
   revalidatePath("/calendar");
 }
 
+export async function syncTaskToGoogle(formData: FormData) {
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+  if (!serviceSupabaseConfigured) return;
+
+  const supabase = getServiceSupabase();
+  const { data: existing } = await supabase
+    .from("tasks")
+    .select("title, priority, category, due_at, ends_at, google_event_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!existing) {
+    console.warn(`[syncTaskToGoogle] task ${id} not found`);
+    return;
+  }
+  if (!existing.due_at) {
+    console.warn(`[syncTaskToGoogle] task ${id} has no due_at; skipping`);
+    return;
+  }
+
+  const description = descriptionFor(
+    (existing.priority as Priority) ?? "med",
+    (existing.category as Category) ?? "default",
+  );
+
+  if (existing.google_event_id) {
+    await updateTaskEvent(String(existing.google_event_id), {
+      title: String(existing.title),
+      dueAt: String(existing.due_at),
+      endsAt: (existing.ends_at as string | null) ?? null,
+      description,
+    });
+  } else {
+    const eventId = await createTaskEvent({
+      title: String(existing.title),
+      dueAt: String(existing.due_at),
+      endsAt: (existing.ends_at as string | null) ?? null,
+      description,
+    });
+    if (eventId) {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ google_event_id: eventId })
+        .eq("id", id);
+      if (error) {
+        console.error("[syncTaskToGoogle] save google_event_id failed:", error);
+      } else {
+        console.log(
+          `[syncTaskToGoogle] linked task ${id} -> google event ${eventId}`,
+        );
+      }
+    } else {
+      console.warn(`[syncTaskToGoogle] task ${id} retry produced no event id`);
+    }
+  }
+
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
+}
+
 export async function deleteTask(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
