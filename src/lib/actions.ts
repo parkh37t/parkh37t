@@ -56,7 +56,16 @@ function readDateRange(formData: FormData): {
   const startTime = String(formData.get("due_time") ?? "").trim() || null;
   const endTime = String(formData.get("end_time") ?? "").trim() || null;
   const due_at = combineDateAndTime(date, startTime);
-  const ends_at = endTime ? combineDateAndTime(date, endTime) : null;
+  let ends_at = endTime ? combineDateAndTime(date, endTime) : null;
+  if (due_at && ends_at) {
+    const s = new Date(due_at).getTime();
+    const e = new Date(ends_at).getTime();
+    if (e === s) {
+      ends_at = null;
+    } else if (e < s) {
+      ends_at = new Date(e + 24 * 60 * 60 * 1000).toISOString();
+    }
+  }
   return { due_at, ends_at };
 }
 
@@ -245,20 +254,46 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
     (existing.category as Category) ?? "default",
   );
 
+  const dueAtStr = String(existing.due_at);
+  const originalEnds = (existing.ends_at as string | null) ?? null;
+  let endsAtStr = originalEnds;
+  if (endsAtStr) {
+    const s = new Date(dueAtStr).getTime();
+    const e = new Date(endsAtStr).getTime();
+    if (e === s) {
+      endsAtStr = null;
+    } else if (e < s) {
+      endsAtStr = new Date(e + 24 * 60 * 60 * 1000).toISOString();
+    }
+  }
+  if (endsAtStr !== originalEnds) {
+    const { error: fixErr } = await supabase
+      .from("tasks")
+      .update({ ends_at: endsAtStr })
+      .eq("id", id);
+    if (fixErr) {
+      console.error("[syncTaskToGoogle] failed to persist corrected ends_at:", fixErr);
+    } else {
+      console.log(
+        `[syncTaskToGoogle] corrected ends_at for task ${id}: ${originalEnds} -> ${endsAtStr ?? "null"}`,
+      );
+    }
+  }
+
   let result: SyncResult;
   if (existing.google_event_id) {
     await updateTaskEvent(String(existing.google_event_id), {
       title: String(existing.title),
-      dueAt: String(existing.due_at),
-      endsAt: (existing.ends_at as string | null) ?? null,
+      dueAt: dueAtStr,
+      endsAt: endsAtStr,
       description,
     });
     result = { ok: true };
   } else {
     const created = await createTaskEvent({
       title: String(existing.title),
-      dueAt: String(existing.due_at),
-      endsAt: (existing.ends_at as string | null) ?? null,
+      dueAt: dueAtStr,
+      endsAt: endsAtStr,
       description,
     });
     if (created.ok) {
