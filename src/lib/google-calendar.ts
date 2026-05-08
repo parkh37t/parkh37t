@@ -439,3 +439,103 @@ export async function deleteTaskEvent(eventId: string): Promise<void> {
     );
   }
 }
+
+export type DiagnosticReport = {
+  env: {
+    googleConfigured: boolean;
+    targetCalendarName: string;
+    appTimezone: string;
+    redirectUri: string;
+  };
+  tokens: {
+    hasStored: boolean;
+    hasRefreshToken: boolean;
+    expiryDate: number | null;
+    expired: boolean | null;
+    msUntilExpiry: number | null;
+  };
+  calendars: {
+    listed: { summary: string | null; summaryOverride: string | null; id: string | null; matched: boolean }[];
+    matchedId: string | null;
+    listError: string | null;
+  };
+  testInsert: {
+    attempted: boolean;
+    eventId: string | null;
+    error: string | null;
+  };
+};
+
+export async function buildDiagnosticReport(): Promise<DiagnosticReport> {
+  const stored = await loadTokensWithCookieFallback();
+  const expiryDate =
+    typeof stored?.expiry_date === "number" ? stored.expiry_date : null;
+  const msUntilExpiry = expiryDate ? expiryDate - Date.now() : null;
+
+  const report: DiagnosticReport = {
+    env: {
+      googleConfigured: googleConfigured(),
+      targetCalendarName: TARGET_CALENDAR_NAME,
+      appTimezone: APP_TIMEZONE,
+      redirectUri: REDIRECT_URI || "(not set)",
+    },
+    tokens: {
+      hasStored: Boolean(stored),
+      hasRefreshToken: Boolean(stored?.refresh_token),
+      expiryDate,
+      expired: expiryDate !== null ? expiryDate <= Date.now() : null,
+      msUntilExpiry,
+    },
+    calendars: { listed: [], matchedId: null, listError: null },
+    testInsert: { attempted: false, eventId: null, error: null },
+  };
+
+  const auth = await getAuthorizedClient();
+  if (!auth) {
+    report.calendars.listError = "no authorized client (token refresh failed or no tokens)";
+    return report;
+  }
+
+  try {
+    const calendar = google.calendar({ version: "v3", auth });
+    const list = await calendar.calendarList.list();
+    const items = list.data.items ?? [];
+    report.calendars.listed = items.map((c) => ({
+      summary: c.summary ?? null,
+      summaryOverride: c.summaryOverride ?? null,
+      id: c.id ?? null,
+      matched: matchesTargetCalendar(c.summary ?? c.summaryOverride),
+    }));
+    const match = report.calendars.listed.find((c) => c.matched);
+    report.calendars.matchedId = match?.id ?? null;
+
+    if (match?.id) {
+      report.testInsert.attempted = true;
+      const start = new Date(Date.now() + 60_000);
+      const end = new Date(Date.now() + 90_000);
+      try {
+        const inserted = await calendar.events.insert({
+          calendarId: match.id,
+          requestBody: {
+            summary: "[diagnose] test event — auto-deleted",
+            description: "Diagnostic test event from Parkh37t Dashboard",
+            start: { dateTime: start.toISOString(), timeZone: APP_TIMEZONE },
+            end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
+          },
+        });
+        report.testInsert.eventId = inserted.data.id ?? null;
+        if (inserted.data.id) {
+          await calendar.events
+            .delete({ calendarId: match.id, eventId: inserted.data.id })
+            .catch(() => {});
+        }
+      } catch (e) {
+        report.testInsert.error = formatGoogleError(e);
+      }
+    }
+  } catch (e) {
+    report.calendars.listError = formatGoogleError(e);
+  }
+
+  return report;
+}
