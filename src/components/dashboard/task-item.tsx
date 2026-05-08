@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Pencil, RefreshCw, Trash2, X } from "lucide-react";
+import { Calendar, Clock, Pencil, RefreshCw, Trash2, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   deleteTask,
@@ -106,26 +106,35 @@ export function TaskItem({ task }: { task: Task }) {
               <option value="personal">{categoryLabels.personal}</option>
             </select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
-            <input
-              type="date"
-              name="due_date"
-              defaultValue={start.date}
-              className="h-11 w-full min-w-0 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
-            />
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex flex-col gap-2 min-w-0">
+            <label className="relative block">
+              <Calendar className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+              <span className="sr-only">날짜</span>
+              <input
+                type="date"
+                name="due_date"
+                defaultValue={start.date}
+                className="h-11 w-full pl-10 pr-3.5 rounded-xl bg-white border border-zinc-200 text-[14px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
+              />
+            </label>
+            <div className="flex items-stretch gap-2 min-w-0">
+              <div className="shrink-0 inline-flex items-center justify-center w-11 rounded-xl bg-white border border-zinc-200 text-zinc-400">
+                <Clock className="h-4 w-4" />
+              </div>
               <input
                 type="time"
                 name="due_time"
                 defaultValue={start.time}
-                className="flex-1 min-w-0 h-11 px-2 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+                aria-label="시작 시각"
+                className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[14px] font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
               />
-              <span className="text-zinc-400 text-sm shrink-0">~</span>
+              <span className="self-center text-zinc-300 text-sm font-medium shrink-0">~</span>
               <input
                 type="time"
                 name="end_time"
                 defaultValue={end.time}
-                className="flex-1 min-w-0 h-11 px-2 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+                aria-label="종료 시각"
+                className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[14px] font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
               />
             </div>
           </div>
