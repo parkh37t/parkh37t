@@ -7,6 +7,7 @@ import {
   startOfWeekKst,
 } from "@/lib/format-time";
 import {
+  clearStoredTokens,
   getStoredTokens,
   saveStoredTokens,
   type StoredTokens,
@@ -78,6 +79,18 @@ export async function googleConnected(): Promise<boolean> {
 }
 
 const REFRESH_LEEWAY_MS = 60 * 1000;
+
+function isInvalidGrantError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const err = e as {
+    response?: { data?: { error?: string; error_description?: string } };
+    message?: string;
+  };
+  if (err.response?.data?.error === "invalid_grant") return true;
+  if (typeof err.message === "string" && err.message.includes("invalid_grant"))
+    return true;
+  return false;
+}
 
 function attachTokenPersistence(
   oauth: ReturnType<typeof makeOAuthClient>,
@@ -159,7 +172,16 @@ async function getAuthorizedClient() {
         `[google] refreshed access_token, new expiry=${merged.expiry_date}`,
       );
     } catch (e) {
-      console.error("[google] refresh failed:", e);
+      if (isInvalidGrantError(e)) {
+        console.error(
+          "[google] refresh_token rejected (invalid_grant) — clearing stored tokens; user must reconnect at /api/google/auth",
+        );
+        await clearStoredTokens().catch((err) =>
+          console.error("[google] failed to clear dead tokens:", err),
+        );
+      } else {
+        console.error("[google] refresh failed:", e);
+      }
       return null;
     }
   }
@@ -334,24 +356,35 @@ async function tryInsertEvent(
   }
 }
 
+export type CreateEventOutcome =
+  | { ok: true; id: string }
+  | { ok: false; reason: string };
+
 export async function createTaskEvent(input: {
   title: string;
   dueAt: string;
   endsAt?: string | null;
   description?: string;
-}): Promise<string | null> {
-  let { auth, calendarId } = await getTargetCalendarId();
+}): Promise<CreateEventOutcome> {
+  const { auth, calendarId } = await getTargetCalendarId();
   if (!auth) {
     console.warn(
       `[createTaskEvent] skipped: no Google auth (title="${input.title}")`,
     );
-    return null;
+    return {
+      ok: false,
+      reason:
+        "Google 인증 토큰이 없거나 만료됐습니다. 우측 상단 '재연결' 버튼으로 다시 연결해 주세요.",
+    };
   }
   if (!calendarId) {
     console.warn(
       `[createTaskEvent] skipped: no calendar matching "${TARGET_CALENDAR_NAME}" (title="${input.title}")`,
     );
-    return null;
+    return {
+      ok: false,
+      reason: `타겟 캘린더 "${TARGET_CALENDAR_NAME}"를 찾을 수 없습니다 (이름이 바뀌었거나 권한이 없을 수 있음).`,
+    };
   }
 
   const first = await tryInsertEvent(auth, calendarId, input);
@@ -359,14 +392,19 @@ export async function createTaskEvent(input: {
     console.log(
       `[createTaskEvent] inserted event id=${first.id} into calendar=${calendarId} (title="${input.title}")`,
     );
-    return first.id;
+    return { ok: true, id: first.id };
   }
 
   console.warn(
     `[createTaskEvent] first attempt failed (title="${input.title}", transient=${first.transient}): ${formatGoogleError(first.error)}`,
   );
 
-  if (!first.transient) return null;
+  if (!first.transient) {
+    return {
+      ok: false,
+      reason: `Google API 오류: ${formatGoogleError(first.error)}`,
+    };
+  }
 
   // Retry once with a fresh client + fresh calendar id (may have rotated).
   clearCalendarIdCache();
@@ -375,19 +413,27 @@ export async function createTaskEvent(input: {
     console.error(
       `[createTaskEvent] retry skipped: auth=${Boolean(retry.auth)} calendarId=${retry.calendarId}`,
     );
-    return null;
+    return {
+      ok: false,
+      reason: !retry.auth
+        ? "재시도 실패: Google 토큰이 만료됐습니다. 재연결이 필요합니다."
+        : `재시도 실패: 캘린더 "${TARGET_CALENDAR_NAME}"를 못 찾았습니다.`,
+    };
   }
   const second = await tryInsertEvent(retry.auth, retry.calendarId, input);
   if (second.id) {
     console.log(
       `[createTaskEvent] inserted on retry id=${second.id} into calendar=${retry.calendarId}`,
     );
-    return second.id;
+    return { ok: true, id: second.id };
   }
   console.error(
     `[createTaskEvent] retry failed (title="${input.title}"): ${formatGoogleError(second.error)}`,
   );
-  return null;
+  return {
+    ok: false,
+    reason: `재시도 후 실패: ${formatGoogleError(second.error)}`,
+  };
 }
 
 export async function updateTaskEvent(
