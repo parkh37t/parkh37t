@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Nav } from "@/components/nav";
+import { GoogleReconnectBanner } from "@/components/google-reconnect-banner";
 
 export const metadata: Metadata = {
   title: "Parkh37t Dashboard",
@@ -32,6 +33,7 @@ export default function RootLayout({
       </head>
       <body>
         <Nav />
+        <GoogleReconnectBanner />
         <main className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-24 pt-6 lg:pt-10">
           {children}
         </main>

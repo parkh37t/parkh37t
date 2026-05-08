@@ -90,16 +90,16 @@ export async function createTask(formData: FormData) {
     if (error) {
       console.error("[createTask] insert failed:", error);
     } else if (data && due_at) {
-      const eventId = await createTaskEvent({
+      const result = await createTaskEvent({
         title,
         dueAt: due_at,
         endsAt: ends_at,
         description: descriptionFor(priority, category) || undefined,
       });
-      if (eventId) {
+      if (result.ok) {
         const { error: updateError } = await supabase
           .from("tasks")
-          .update({ google_event_id: eventId })
+          .update({ google_event_id: result.id })
           .eq("id", data.id);
         if (updateError) {
           console.error(
@@ -108,12 +108,12 @@ export async function createTask(formData: FormData) {
           );
         } else {
           console.log(
-            `[createTask] linked task ${data.id} -> google event ${eventId}`,
+            `[createTask] linked task ${data.id} -> google event ${result.id}`,
           );
         }
       } else {
         console.warn(
-          `[createTask] task ${data.id} saved but Google event was not created`,
+          `[createTask] task ${data.id} saved but Google event was not created: ${result.reason}`,
         );
       }
     } else if (data && !due_at) {
@@ -168,17 +168,19 @@ export async function updateTask(formData: FormData) {
         description,
       });
     } else {
-      const eventId = await createTaskEvent({
+      const result = await createTaskEvent({
         title,
         dueAt: due_at,
         endsAt: ends_at,
         description,
       });
-      if (eventId) {
+      if (result.ok) {
         await supabase
           .from("tasks")
-          .update({ google_event_id: eventId })
+          .update({ google_event_id: result.id })
           .eq("id", id);
+      } else {
+        console.warn(`[updateTask] Google event not created: ${result.reason}`);
       }
     }
   } else if (existing?.google_event_id) {
@@ -213,10 +215,14 @@ export async function toggleTask(formData: FormData) {
   revalidatePath("/calendar");
 }
 
-export async function syncTaskToGoogle(formData: FormData) {
-  const id = String(formData.get("id") ?? "").trim();
-  if (!id) return;
-  if (!serviceSupabaseConfigured) return;
+export type SyncResult = { ok: true } | { ok: false; error: string };
+
+export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
+  const id = taskId.trim();
+  if (!id) return { ok: false, error: "잘못된 요청 (id 없음)" };
+  if (!serviceSupabaseConfigured) {
+    return { ok: false, error: "서버 DB가 설정돼 있지 않습니다." };
+  }
 
   const supabase = getServiceSupabase();
   const { data: existing } = await supabase
@@ -227,11 +233,11 @@ export async function syncTaskToGoogle(formData: FormData) {
 
   if (!existing) {
     console.warn(`[syncTaskToGoogle] task ${id} not found`);
-    return;
+    return { ok: false, error: "할 일을 찾을 수 없습니다." };
   }
   if (!existing.due_at) {
     console.warn(`[syncTaskToGoogle] task ${id} has no due_at; skipping`);
-    return;
+    return { ok: false, error: "마감일이 없으면 동기화할 수 없습니다." };
   }
 
   const description = descriptionFor(
@@ -239,6 +245,7 @@ export async function syncTaskToGoogle(formData: FormData) {
     (existing.category as Category) ?? "default",
   );
 
+  let result: SyncResult;
   if (existing.google_event_id) {
     await updateTaskEvent(String(existing.google_event_id), {
       title: String(existing.title),
@@ -246,33 +253,43 @@ export async function syncTaskToGoogle(formData: FormData) {
       endsAt: (existing.ends_at as string | null) ?? null,
       description,
     });
+    result = { ok: true };
   } else {
-    const eventId = await createTaskEvent({
+    const created = await createTaskEvent({
       title: String(existing.title),
       dueAt: String(existing.due_at),
       endsAt: (existing.ends_at as string | null) ?? null,
       description,
     });
-    if (eventId) {
+    if (created.ok) {
       const { error } = await supabase
         .from("tasks")
-        .update({ google_event_id: eventId })
+        .update({ google_event_id: created.id })
         .eq("id", id);
       if (error) {
         console.error("[syncTaskToGoogle] save google_event_id failed:", error);
+        result = {
+          ok: false,
+          error: "Google 이벤트는 만들었지만 DB에 id 저장 실패",
+        };
       } else {
         console.log(
-          `[syncTaskToGoogle] linked task ${id} -> google event ${eventId}`,
+          `[syncTaskToGoogle] linked task ${id} -> google event ${created.id}`,
         );
+        result = { ok: true };
       }
     } else {
-      console.warn(`[syncTaskToGoogle] task ${id} retry produced no event id`);
+      console.warn(
+        `[syncTaskToGoogle] task ${id} failed: ${created.reason}`,
+      );
+      result = { ok: false, error: created.reason };
     }
   }
 
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/calendar");
+  return result;
 }
 
 export async function deleteTask(formData: FormData) {

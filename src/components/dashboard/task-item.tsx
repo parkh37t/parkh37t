@@ -55,6 +55,8 @@ function formatRange(
 export function TaskItem({ task }: { task: Task }) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [syncing, startSyncTransition] = useTransition();
+  const [syncError, setSyncError] = useState<string | null>(null);
   const start = isoToParts(task.dueAt);
   const end = isoToParts(task.endsAt);
   const priority = task.priority ?? "med";
@@ -211,20 +213,42 @@ export function TaskItem({ task }: { task: Task }) {
           {needsGoogleSync ? (
             <>
               <span className="text-zinc-200">·</span>
-              <form action={syncTaskToGoogle}>
-                <input type="hidden" name="id" value={task.id} />
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-[2px] text-[10.5px] font-semibold text-amber-700 transition hover:bg-amber-100"
-                  title="구글 캘린더에 동기화되지 않았습니다. 클릭하여 재시도"
-                >
-                  <RefreshCw className="h-[10px] w-[10px]" />
-                  구글 미동기화
-                </button>
-              </form>
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => {
+                  setSyncError(null);
+                  startSyncTransition(async () => {
+                    const result = await syncTaskToGoogle(task.id);
+                    if (!result.ok) setSyncError(result.error);
+                  });
+                }}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-[2px] text-[10.5px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
+                title="구글 캘린더에 동기화되지 않았습니다. 클릭하여 재시도"
+              >
+                <RefreshCw
+                  className={
+                    "h-[10px] w-[10px] " + (syncing ? "animate-spin" : "")
+                  }
+                />
+                {syncing ? "동기화중…" : "구글 미동기화"}
+              </button>
             </>
           ) : null}
         </div>
+        {syncError ? (
+          <div className="mt-1 flex items-start gap-1.5 rounded-lg bg-rose-50 border border-rose-100 px-2 py-1.5 text-[10.5px] leading-snug text-rose-700">
+            <span className="flex-1">{syncError}</span>
+            <button
+              type="button"
+              onClick={() => setSyncError(null)}
+              className="text-rose-500 hover:text-rose-700 shrink-0"
+              aria-label="닫기"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : null}
       </div>
       <span
         className="px-2 h-[22px] rounded-full text-[10.5px] font-semibold flex items-center"
