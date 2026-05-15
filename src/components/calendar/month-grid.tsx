@@ -97,8 +97,7 @@ export function MonthGrid({
               </div>
               <ul className="flex flex-col gap-0.5">
                 {dayEvents.slice(0, 3).map((ev) => {
-                  const isLocal =
-                    ev.source === "local" && ev.taskId && !ev.ownerName;
+                  const isLocal = ev.source === "local" && ev.taskId;
                   return (
                     <li key={ev.id}>
                       <button

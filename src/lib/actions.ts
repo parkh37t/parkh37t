@@ -6,12 +6,9 @@ import {
   deleteTaskEvent,
   updateTaskEvent,
 } from "@/lib/google-calendar";
-import { getCurrentProfile } from "@/lib/auth";
 import {
-  getServerSupabase,
   getServiceSupabase,
   serviceSupabaseConfigured,
-  supabaseConfigured,
 } from "@/lib/supabase";
 import type { Category, Priority } from "@/types";
 
@@ -89,84 +86,88 @@ function descriptionFor(priority: Priority, category: Category): string {
     .join(" · ");
 }
 
-function revalidateAll() {
-  revalidatePath("/");
-  revalidatePath("/tasks");
-  revalidatePath("/calendar");
-}
-
-async function authorizedUser() {
-  if (!supabaseConfigured) return null;
-  const profile = await getCurrentProfile();
-  if (!profile || profile.status !== "approved") return null;
-  return profile;
-}
-
 export async function createTask(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   if (!title) return;
-  const profile = await authorizedUser();
-  if (!profile) return;
-
   const priority = readPriority(formData);
   const category = readCategory(formData);
   const { due_at, ends_at } = readDateRange(formData);
 
-  const supabase = await getServerSupabase();
-  const { data, error } = await supabase
-    .from("tasks")
-    .insert({
-      user_id: profile.id,
-      title,
-      priority,
-      category,
-      due_at,
-      ends_at,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    console.error("[createTask] insert failed:", error);
-  } else if (data && due_at && profile.role === "admin") {
-    const result = await createTaskEvent({
-      title,
-      dueAt: due_at,
-      endsAt: ends_at,
-      description: descriptionFor(priority, category) || undefined,
-    });
-    if (result.ok) {
-      await supabase
-        .from("tasks")
-        .update({ google_event_id: result.id })
-        .eq("id", data.id);
-    } else {
-      console.warn(
-        `[createTask] task ${data.id} saved but Google event was not created: ${result.reason}`,
+  console.log(
+    `[createTask] title="${title}" due_at=${due_at ?? "null"} ends_at=${ends_at ?? "null"}`,
+  );
+
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert({ title, priority, category, due_at, ends_at })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[createTask] insert failed:", error);
+    } else if (data && due_at) {
+      const result = await createTaskEvent({
+        title,
+        dueAt: due_at,
+        endsAt: ends_at,
+        description: descriptionFor(priority, category) || undefined,
+      });
+      if (result.ok) {
+        const { error: updateError } = await supabase
+          .from("tasks")
+          .update({ google_event_id: result.id })
+          .eq("id", data.id);
+        if (updateError) {
+          console.error(
+            "[createTask] save google_event_id failed:",
+            updateError,
+          );
+        } else {
+          console.log(
+            `[createTask] linked task ${data.id} -> google event ${result.id}`,
+          );
+        }
+      } else {
+        console.warn(
+          `[createTask] task ${data.id} saved but Google event was not created: ${result.reason}`,
+        );
+      }
+    } else if (data && !due_at) {
+      console.log(
+        `[createTask] task ${data.id} saved without due_at; skipping Google sync`,
       );
     }
+  } else {
+    console.warn("[createTask] serviceSupabaseConfigured is false; nothing saved");
   }
 
-  revalidateAll();
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
 }
 
 export async function updateTask(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   if (!id || !title) return;
-  const profile = await authorizedUser();
-  if (!profile) return;
-
   const priority = readPriority(formData);
   const category = readCategory(formData);
   const { due_at, ends_at } = readDateRange(formData);
 
-  const supabase = await getServerSupabase();
+  if (!serviceSupabaseConfigured) {
+    revalidatePath("/");
+    revalidatePath("/tasks");
+    revalidatePath("/calendar");
+    return;
+  }
+
+  const supabase = getServiceSupabase();
   const { data: existing } = await supabase
     .from("tasks")
-    .select("google_event_id, user_id")
+    .select("google_event_id")
     .eq("id", id)
     .maybeSingle();
-  if (!existing || existing.user_id !== profile.id) return;
 
   const { error } = await supabase
     .from("tasks")
@@ -174,9 +175,9 @@ export async function updateTask(formData: FormData) {
     .eq("id", id);
   if (error) {
     console.error("updateTask failed:", error);
-  } else if (due_at && profile.role === "admin") {
+  } else if (due_at) {
     const description = descriptionFor(priority, category) || undefined;
-    if (existing.google_event_id) {
+    if (existing?.google_event_id) {
       await updateTaskEvent(String(existing.google_event_id), {
         title,
         dueAt: due_at,
@@ -196,12 +197,10 @@ export async function updateTask(formData: FormData) {
           .update({ google_event_id: result.id })
           .eq("id", id);
       } else {
-        console.warn(
-          `[updateTask] Google event not created: ${result.reason}`,
-        );
+        console.warn(`[updateTask] Google event not created: ${result.reason}`);
       }
     }
-  } else if (!due_at && existing.google_event_id) {
+  } else if (existing?.google_event_id) {
     await deleteTaskEvent(String(existing.google_event_id));
     await supabase
       .from("tasks")
@@ -209,25 +208,28 @@ export async function updateTask(formData: FormData) {
       .eq("id", id);
   }
 
-  revalidateAll();
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
 }
 
 export async function toggleTask(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const done = formData.get("done") === "true";
   if (!id) return;
-  const profile = await authorizedUser();
-  if (!profile) return;
 
-  const supabase = await getServerSupabase();
-  const { error } = await supabase
-    .from("tasks")
-    .update({ done: !done })
-    .eq("id", id)
-    .eq("user_id", profile.id);
-  if (error) console.error("toggleTask update failed:", error);
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase
+      .from("tasks")
+      .update({ done: !done })
+      .eq("id", id);
+    if (error) console.error("toggleTask update failed:", error);
+  }
 
-  revalidateAll();
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
 }
 
 export type SyncResult = { ok: true } | { ok: false; error: string };
@@ -235,14 +237,6 @@ export type SyncResult = { ok: true } | { ok: false; error: string };
 export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
   const id = taskId.trim();
   if (!id) return { ok: false, error: "잘못된 요청 (id 없음)" };
-  const profile = await authorizedUser();
-  if (!profile) return { ok: false, error: "로그인이 필요합니다." };
-  if (profile.role !== "admin") {
-    return {
-      ok: false,
-      error: "Google Calendar 동기화는 관리자만 사용할 수 있어요.",
-    };
-  }
   if (!serviceSupabaseConfigured) {
     return { ok: false, error: "서버 DB가 설정돼 있지 않습니다." };
   }
@@ -250,14 +244,16 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
   const supabase = getServiceSupabase();
   const { data: existing } = await supabase
     .from("tasks")
-    .select("title, priority, category, due_at, ends_at, google_event_id, user_id")
+    .select("title, priority, category, due_at, ends_at, google_event_id")
     .eq("id", id)
     .maybeSingle();
-  if (!existing) return { ok: false, error: "할 일을 찾을 수 없습니다." };
-  if (existing.user_id !== profile.id) {
-    return { ok: false, error: "내 할 일만 동기화할 수 있어요." };
+
+  if (!existing) {
+    console.warn(`[syncTaskToGoogle] task ${id} not found`);
+    return { ok: false, error: "할 일을 찾을 수 없습니다." };
   }
   if (!existing.due_at) {
+    console.warn(`[syncTaskToGoogle] task ${id} has no due_at; skipping`);
     return { ok: false, error: "마감일이 없으면 동기화할 수 없습니다." };
   }
 
@@ -272,11 +268,24 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
   if (endsAtStr) {
     const s = new Date(dueAtStr).getTime();
     const e = new Date(endsAtStr).getTime();
-    if (e === s) endsAtStr = null;
-    else if (e < s) endsAtStr = new Date(e + 24 * 60 * 60 * 1000).toISOString();
+    if (e === s) {
+      endsAtStr = null;
+    } else if (e < s) {
+      endsAtStr = new Date(e + 24 * 60 * 60 * 1000).toISOString();
+    }
   }
   if (endsAtStr !== originalEnds) {
-    await supabase.from("tasks").update({ ends_at: endsAtStr }).eq("id", id);
+    const { error: fixErr } = await supabase
+      .from("tasks")
+      .update({ ends_at: endsAtStr })
+      .eq("id", id);
+    if (fixErr) {
+      console.error("[syncTaskToGoogle] failed to persist corrected ends_at:", fixErr);
+    } else {
+      console.log(
+        `[syncTaskToGoogle] corrected ends_at for task ${id}: ${originalEnds} -> ${endsAtStr ?? "null"}`,
+      );
+    }
   }
 
   let result: SyncResult;
@@ -296,82 +305,69 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
       description,
     });
     if (created.ok) {
-      await supabase
+      const { error } = await supabase
         .from("tasks")
         .update({ google_event_id: created.id })
         .eq("id", id);
-      result = { ok: true };
+      if (error) {
+        console.error("[syncTaskToGoogle] save google_event_id failed:", error);
+        result = {
+          ok: false,
+          error: "Google 이벤트는 만들었지만 DB에 id 저장 실패",
+        };
+      } else {
+        console.log(
+          `[syncTaskToGoogle] linked task ${id} -> google event ${created.id}`,
+        );
+        result = { ok: true };
+      }
     } else {
+      console.warn(
+        `[syncTaskToGoogle] task ${id} failed: ${created.reason}`,
+      );
       result = { ok: false, error: created.reason };
     }
   }
 
-  revalidateAll();
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
   return result;
 }
 
 export async function deleteTask(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  const profile = await authorizedUser();
-  if (!profile) return;
 
-  const supabase = await getServerSupabase();
-  const { data: existing } = await supabase
-    .from("tasks")
-    .select("google_event_id, user_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (!existing || existing.user_id !== profile.id) return;
-  const { error } = await supabase
-    .from("tasks")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", profile.id);
-  if (error) console.error("deleteTask failed:", error);
-  else if (existing.google_event_id && profile.role === "admin") {
-    await deleteTaskEvent(String(existing.google_event_id));
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { data: existing } = await supabase
+      .from("tasks")
+      .select("google_event_id")
+      .eq("id", id)
+      .maybeSingle();
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) {
+      console.error("deleteTask failed:", error);
+    } else if (existing?.google_event_id) {
+      await deleteTaskEvent(String(existing.google_event_id));
+    }
   }
 
-  revalidateAll();
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/calendar");
 }
 
 export async function createNote(formData: FormData) {
   const content = String(formData.get("content") ?? "").trim();
   if (!content) return;
-  const profile = await authorizedUser();
-  if (!profile) return;
-  const supabase = await getServerSupabase();
-  const { error } = await supabase
-    .from("notes")
-    .insert({ content, user_id: profile.id });
-  if (error) console.error("createNote insert failed:", error);
-  revalidatePath("/");
-}
 
-// ============================================================
-// Calendar viewing: opt in/out of seeing other members' tasks
-// ============================================================
-
-export async function setCalendarViews(
-  viewedUserIds: string[],
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const profile = await authorizedUser();
-  if (!profile) return { ok: false, error: "로그인이 필요합니다." };
-  const supabase = await getServerSupabase();
-  // Replace the full list for this user
-  await supabase.from("calendar_views").delete().eq("user_id", profile.id);
-  const wanted = viewedUserIds
-    .map((s) => s.trim())
-    .filter((s) => s && s !== profile.id);
-  if (wanted.length > 0) {
-    const rows = wanted.map((viewed_user_id) => ({
-      user_id: profile.id,
-      viewed_user_id,
-    }));
-    const { error } = await supabase.from("calendar_views").insert(rows);
-    if (error) return { ok: false, error: error.message };
+  if (serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase.from("notes").insert({ content });
+    if (error) console.error("createNote insert failed:", error);
   }
-  revalidatePath("/calendar");
-  return { ok: true };
+
+  revalidatePath("/");
 }
