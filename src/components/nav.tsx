@@ -8,10 +8,12 @@ import {
   CalendarDays,
   LayoutGrid,
   ListTodo,
+  LogIn,
   LogOut,
   Menu,
   ShieldCheck,
   Sparkles,
+  UserPlus,
   X,
 } from "lucide-react";
 import { LogoutButton } from "@/components/auth/logout-button";
@@ -107,11 +109,33 @@ export function Nav({ user }: { user: NavUser | null }) {
                     </span>
                   ) : null}
                 </span>
-                <LogoutButton className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white border border-zinc-100 text-zinc-500 hover:text-rose-500">
+                <LogoutButton className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white border border-zinc-100 px-3 text-[12.5px] font-semibold text-zinc-600 hover:text-rose-500">
                   <LogOut className="h-4 w-4" />
+                  로그아웃
                 </LogoutButton>
               </div>
-            ) : null}
+            ) : (
+              <div className="hidden md:flex items-center gap-2">
+                <Link
+                  href={"/login" as Route}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white border border-zinc-100 px-3.5 text-[12.5px] font-semibold text-ink shadow-sm hover:border-zinc-200"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  로그인
+                </Link>
+                <Link
+                  href={"/signup" as Route}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold text-white shadow-sm"
+                  style={{
+                    background: "#7C6BF6",
+                    boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
+                  }}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  회원가입
+                </Link>
+              </div>
+            )}
             <button
               onClick={() => setDrawer(true)}
               className="md:hidden w-10 h-10 rounded-full hover:bg-white/80 flex items-center justify-center text-ink"
@@ -168,7 +192,28 @@ export function Nav({ user }: { user: NavUser | null }) {
                   </div>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="mb-5 flex flex-col gap-2">
+                <Link
+                  href={"/login" as Route}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white text-[14px] font-semibold text-ink"
+                >
+                  <LogIn className="h-4 w-4" />
+                  로그인
+                </Link>
+                <Link
+                  href={"/signup" as Route}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[14px] font-semibold text-white"
+                  style={{
+                    background: "#7C6BF6",
+                    boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
+                  }}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  회원가입
+                </Link>
+              </div>
+            )}
             <nav className="flex flex-col gap-1.5">
               {links.map(({ href, label, icon: Icon }) => {
                 const active = isActive(href);
