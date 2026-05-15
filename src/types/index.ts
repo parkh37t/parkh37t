@@ -21,8 +21,10 @@ export type Event = {
   endsAt: string;
   location?: string | null;
   category?: Category;
+  priority?: Priority;
   source: "local" | "google";
   googleEventId?: string | null;
+  taskId?: string | null;
 };
 
 export type Note = {

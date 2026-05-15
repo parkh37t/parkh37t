@@ -107,8 +107,10 @@ function taskToEvent(task: Task): Event {
     endsAt,
     location: null,
     category: task.category ?? "default",
+    priority: task.priority ?? "med",
     source: "local",
     googleEventId: task.googleEventId ?? null,
+    taskId: task.id,
   };
 }
 

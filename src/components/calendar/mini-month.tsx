@@ -1,3 +1,5 @@
+"use client";
+
 import {
   addDays,
   endOfMonth,
@@ -11,9 +13,17 @@ import {
 import { ko } from "date-fns/locale";
 import { isSameDayKst } from "@/lib/format-time";
 import { categoryColors } from "@/lib/theme";
+import { useTaskModal } from "@/components/task-modal/provider";
 import type { Event } from "@/types";
 
 const WEEK_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
+function dateToYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
 
 export function MiniMonth({
   reference,
@@ -22,6 +32,7 @@ export function MiniMonth({
   reference: Date;
   events: Event[];
 }) {
+  const { openCreate } = useTaskModal();
   const today = new Date();
   const monthStart = startOfMonth(reference);
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -60,13 +71,15 @@ export function MiniMonth({
             : null;
           const isSunday = day.getDay() === 0;
           return (
-            <div
+            <button
+              type="button"
               key={day.toISOString()}
-              className="relative flex aspect-square items-center justify-center"
+              onClick={() => openCreate({ initialDate: dateToYmd(day) })}
+              className="relative flex aspect-square items-center justify-center rounded transition hover:bg-violet-50/60 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
               title={
                 dayEvents.length > 0
                   ? dayEvents.map((e) => e.title).join("\n")
-                  : undefined
+                  : "새 일정 추가"
               }
             >
               <span
@@ -88,7 +101,7 @@ export function MiniMonth({
                   style={{ backgroundColor: dotColor }}
                 />
               ) : null}
-            </div>
+            </button>
           );
         })}
       </div>

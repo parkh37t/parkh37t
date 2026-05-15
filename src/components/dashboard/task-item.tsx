@@ -1,13 +1,9 @@
 "use client";
 
-import { Calendar, Clock, Pencil, RefreshCw, Trash2, X } from "lucide-react";
+import { Clock, Pencil, RefreshCw, Trash2, X } from "lucide-react";
 import { useState, useTransition } from "react";
-import {
-  deleteTask,
-  syncTaskToGoogle,
-  toggleTask,
-  updateTask,
-} from "@/lib/actions";
+import { deleteTask, syncTaskToGoogle, toggleTask } from "@/lib/actions";
+import { useTaskModal } from "@/components/task-modal/provider";
 import { categoryLabels, priorityBadge, priorityColors } from "@/lib/theme";
 import type { Task } from "@/types";
 
@@ -53,116 +49,14 @@ function formatRange(
 }
 
 export function TaskItem({ task }: { task: Task }) {
-  const [editing, setEditing] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const { openEdit } = useTaskModal();
   const [syncing, startSyncTransition] = useTransition();
   const [syncError, setSyncError] = useState<string | null>(null);
-  const start = isoToParts(task.dueAt);
-  const end = isoToParts(task.endsAt);
   const priority = task.priority ?? "med";
   const category = task.category ?? "default";
   const badge = priorityBadge[priority];
   const range = formatRange(task.dueAt, task.endsAt);
   const needsGoogleSync = Boolean(task.dueAt) && !task.googleEventId;
-
-  if (editing) {
-    return (
-      <li className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3.5">
-        <form
-          action={(fd) => {
-            startTransition(async () => {
-              await updateTask(fd);
-              setEditing(false);
-            });
-          }}
-          className="flex flex-col gap-2.5"
-        >
-          <input type="hidden" name="id" value={task.id} />
-          <input
-            name="title"
-            defaultValue={task.title}
-            required
-            className="w-full h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              name="priority"
-              defaultValue={priority}
-              className="h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
-            >
-              <option value="low">low · 낮음</option>
-              <option value="med">med · 보통</option>
-              <option value="high">high · 높음</option>
-            </select>
-            <select
-              name="category"
-              defaultValue={category}
-              className="h-11 px-3.5 rounded-xl bg-white border border-zinc-200 text-[13.5px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40"
-            >
-              <option value="default">{categoryLabels.default}</option>
-              <option value="work">{categoryLabels.work}</option>
-              <option value="health">{categoryLabels.health}</option>
-              <option value="study">{categoryLabels.study}</option>
-              <option value="personal">{categoryLabels.personal}</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-2 min-w-0">
-            <label className="relative block">
-              <Calendar className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-              <span className="sr-only">날짜</span>
-              <input
-                type="date"
-                name="due_date"
-                defaultValue={start.date}
-                className="h-11 w-full pl-10 pr-3.5 rounded-xl bg-white border border-zinc-200 text-[14px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
-              />
-            </label>
-            <div className="flex items-stretch gap-2 min-w-0">
-              <div className="shrink-0 inline-flex items-center justify-center w-11 rounded-xl bg-white border border-zinc-200 text-zinc-400">
-                <Clock className="h-4 w-4" />
-              </div>
-              <input
-                type="time"
-                name="due_time"
-                defaultValue={start.time}
-                aria-label="시작 시각"
-                className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[14px] font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
-              />
-              <span className="self-center text-zinc-300 text-sm font-medium shrink-0">~</span>
-              <input
-                type="time"
-                name="end_time"
-                defaultValue={end.time}
-                aria-label="종료 시각"
-                className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-white border border-zinc-200 text-[14px] font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-violet-300/40 focus:border-violet-300"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              className="inline-flex h-10 items-center gap-1 rounded-full border border-zinc-200 bg-white px-4 text-[13px] font-semibold text-ink-muted transition hover:border-zinc-300"
-            >
-              <X className="h-4 w-4" />
-              취소
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="inline-flex h-10 items-center gap-1 rounded-full px-5 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
-              style={{
-                background: "#7C6BF6",
-                boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
-              }}
-            >
-              {pending ? "저장중…" : "저장"}
-            </button>
-          </div>
-        </form>
-      </li>
-    );
-  }
 
   return (
     <li className="group relative flex items-center gap-3 pl-3 pr-2.5 py-2.5 rounded-2xl hover:bg-[#FAFAFC] border border-transparent hover:border-zinc-100 transition">
@@ -201,7 +95,20 @@ export function TaskItem({ task }: { task: Task }) {
           ) : null}
         </button>
       </form>
-      <div className="flex-1 min-w-0">
+      <button
+        type="button"
+        onClick={() =>
+          openEdit({
+            id: task.id,
+            title: task.title,
+            priority: task.priority,
+            category: task.category,
+            dueAt: task.dueAt,
+            endsAt: task.endsAt,
+          })
+        }
+        className="flex-1 min-w-0 text-left"
+      >
         <div
           className={
             "text-[14px] font-semibold leading-snug " +
@@ -219,46 +126,41 @@ export function TaskItem({ task }: { task: Task }) {
           ) : null}
           {range ? <span className="text-zinc-200">·</span> : null}
           <span>{categoryLabels[category]}</span>
-          {needsGoogleSync ? (
-            <>
-              <span className="text-zinc-200">·</span>
-              <button
-                type="button"
-                disabled={syncing}
-                onClick={() => {
-                  setSyncError(null);
-                  startSyncTransition(async () => {
-                    const result = await syncTaskToGoogle(task.id);
-                    if (!result.ok) setSyncError(result.error);
-                  });
-                }}
-                className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-[2px] text-[10.5px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
-                title="구글 캘린더에 동기화되지 않았습니다. 클릭하여 재시도"
-              >
-                <RefreshCw
-                  className={
-                    "h-[10px] w-[10px] " + (syncing ? "animate-spin" : "")
-                  }
-                />
-                {syncing ? "동기화중…" : "구글 미동기화"}
-              </button>
-            </>
-          ) : null}
         </div>
-        {syncError ? (
-          <div className="mt-1 flex items-start gap-1.5 rounded-lg bg-rose-50 border border-rose-100 px-2 py-1.5 text-[10.5px] leading-snug text-rose-700">
-            <span className="flex-1">{syncError}</span>
-            <button
-              type="button"
-              onClick={() => setSyncError(null)}
-              className="text-rose-500 hover:text-rose-700 shrink-0"
-              aria-label="닫기"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : null}
-      </div>
+      </button>
+      {needsGoogleSync ? (
+        <button
+          type="button"
+          disabled={syncing}
+          onClick={() => {
+            setSyncError(null);
+            startSyncTransition(async () => {
+              const result = await syncTaskToGoogle(task.id);
+              if (!result.ok) setSyncError(result.error);
+            });
+          }}
+          className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-[2px] text-[10.5px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 shrink-0"
+          title="구글 캘린더에 동기화되지 않았습니다. 클릭하여 재시도"
+        >
+          <RefreshCw
+            className={"h-[10px] w-[10px] " + (syncing ? "animate-spin" : "")}
+          />
+          {syncing ? "동기화중…" : "구글 미동기화"}
+        </button>
+      ) : null}
+      {syncError ? (
+        <div className="absolute -bottom-1 left-3 right-3 mt-1 flex items-start gap-1.5 rounded-lg bg-rose-50 border border-rose-100 px-2 py-1.5 text-[10.5px] leading-snug text-rose-700">
+          <span className="flex-1">{syncError}</span>
+          <button
+            type="button"
+            onClick={() => setSyncError(null)}
+            className="text-rose-500 hover:text-rose-700 shrink-0"
+            aria-label="닫기"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
       <span
         className="px-2 h-[22px] rounded-full text-[10.5px] font-semibold flex items-center"
         style={{ background: badge.bg, color: badge.fg }}
@@ -267,7 +169,16 @@ export function TaskItem({ task }: { task: Task }) {
       </span>
       <button
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={() =>
+          openEdit({
+            id: task.id,
+            title: task.title,
+            priority: task.priority,
+            category: task.category,
+            dueAt: task.dueAt,
+            endsAt: task.endsAt,
+          })
+        }
         aria-label="수정"
         className="opacity-0 transition group-hover:opacity-100 text-zinc-400 hover:text-accent-lavender"
       >
