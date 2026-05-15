@@ -25,7 +25,6 @@ export type Event = {
   source: "local" | "google";
   googleEventId?: string | null;
   taskId?: string | null;
-  ownerName?: string | null;
 };
 
 export type Note = {
