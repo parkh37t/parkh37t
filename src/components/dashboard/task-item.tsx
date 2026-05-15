@@ -95,20 +95,7 @@ export function TaskItem({ task }: { task: Task }) {
           ) : null}
         </button>
       </form>
-      <button
-        type="button"
-        onClick={() =>
-          openEdit({
-            id: task.id,
-            title: task.title,
-            priority: task.priority,
-            category: task.category,
-            dueAt: task.dueAt,
-            endsAt: task.endsAt,
-          })
-        }
-        className="flex-1 min-w-0 text-left"
-      >
+      <div className="flex-1 min-w-0">
         <div
           className={
             "text-[14px] font-semibold leading-snug " +
@@ -127,7 +114,7 @@ export function TaskItem({ task }: { task: Task }) {
           {range ? <span className="text-zinc-200">·</span> : null}
           <span>{categoryLabels[category]}</span>
         </div>
-      </button>
+      </div>
       {needsGoogleSync ? (
         <button
           type="button"
