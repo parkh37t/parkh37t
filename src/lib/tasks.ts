@@ -5,9 +5,12 @@ import {
   startOfWeekKst,
 } from "@/lib/format-time";
 import {
+  getServerSupabase,
   getServiceSupabase,
   serviceSupabaseConfigured,
+  supabaseConfigured,
 } from "@/lib/supabase";
+import { getCurrentProfile } from "@/lib/auth";
 import type { Event, Task } from "@/types";
 
 const FALLBACK: Task[] = [
@@ -27,24 +30,25 @@ const FALLBACK: Task[] = [
     category: "work",
     createdAt: new Date().toISOString(),
   },
-  {
-    id: "demo-3",
-    title: "대시보드 첫 사용해보기",
-    done: true,
-    priority: "low",
-    category: "personal",
-    createdAt: new Date().toISOString(),
-  },
 ];
 
+async function currentUserId(): Promise<string | null> {
+  if (!supabaseConfigured) return null;
+  const profile = await getCurrentProfile();
+  return profile?.id ?? null;
+}
+
 export async function listTasks(): Promise<Task[]> {
-  if (!serviceSupabaseConfigured) return FALLBACK;
-  const supabase = getServiceSupabase();
+  if (!supabaseConfigured) return FALLBACK;
+  const userId = await currentUserId();
+  if (!userId) return [];
+  const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("tasks")
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
-  if (error || !data) return FALLBACK;
+  if (error || !data) return [];
   return data.map(rowToTask);
 }
 
@@ -52,17 +56,20 @@ export async function listTasksWithDueBetween(
   from: Date,
   to: Date,
 ): Promise<Task[]> {
-  if (!serviceSupabaseConfigured) {
+  if (!supabaseConfigured) {
     return FALLBACK.filter((t) => {
       if (!t.dueAt) return false;
       const d = new Date(t.dueAt).getTime();
       return d >= from.getTime() && d <= to.getTime();
     });
   }
-  const supabase = getServiceSupabase();
+  const userId = await currentUserId();
+  if (!userId) return [];
+  const supabase = await getServerSupabase();
   const { data, error } = await supabase
     .from("tasks")
     .select("*")
+    .eq("user_id", userId)
     .not("due_at", "is", null)
     .gte("due_at", from.toISOString())
     .lte("due_at", to.toISOString())
@@ -77,7 +84,7 @@ export async function listTodaysTaskEvents(): Promise<Event[]> {
     startOfDayKst(now),
     endOfDayKst(now),
   );
-  return tasks.map(taskToEvent);
+  return tasks.map((t) => taskToEvent(t));
 }
 
 export async function listWeekTaskEvents(): Promise<Event[]> {
@@ -86,7 +93,7 @@ export async function listWeekTaskEvents(): Promise<Event[]> {
     startOfWeekKst(now),
     endOfWeekKst(now),
   );
-  return tasks.map(taskToEvent);
+  return tasks.map((t) => taskToEvent(t));
 }
 
 export async function listTaskEventsBetween(
@@ -94,15 +101,56 @@ export async function listTaskEventsBetween(
   end: Date,
 ): Promise<Event[]> {
   const tasks = await listTasksWithDueBetween(start, end);
-  return tasks.map(taskToEvent);
+  return tasks.map((t) => taskToEvent(t));
 }
 
-function taskToEvent(task: Task): Event {
+/**
+ * Lists tasks belonging to OTHER users that the current user has opted in to
+ * view via calendar_views. Uses the service role to bypass RLS so a single
+ * query can fetch everything (we still scope to allowed user_ids).
+ */
+export async function listSharedTaskEventsBetween(
+  start: Date,
+  end: Date,
+): Promise<Event[]> {
+  if (!serviceSupabaseConfigured) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
+  const supabase = getServiceSupabase();
+  const { data: views } = await supabase
+    .from("calendar_views")
+    .select("viewed_user_id")
+    .eq("user_id", userId);
+  const allowed = (views ?? []).map((r) => String(r.viewed_user_id));
+  if (allowed.length === 0) return [];
+  const { data: rows, error } = await supabase
+    .from("tasks")
+    .select("*, profiles!inner(name)")
+    .in("user_id", allowed)
+    .not("due_at", "is", null)
+    .gte("due_at", start.toISOString())
+    .lte("due_at", end.toISOString())
+    .order("due_at", { ascending: true });
+  if (error || !rows) return [];
+  return rows.map((row) => {
+    const t = rowToTask(row);
+    const ownerName =
+      ((row as Record<string, unknown>).profiles as
+        | { name?: string }
+        | undefined)?.name ?? "회원";
+    return taskToEvent(t, { ownerName });
+  });
+}
+
+function taskToEvent(
+  task: Task,
+  opts: { ownerName?: string } = {},
+): Event {
   const startsAt = task.dueAt ?? new Date().toISOString();
   const endsAt = task.endsAt ?? startsAt;
   return {
     id: `task-${task.id}`,
-    title: task.title,
+    title: opts.ownerName ? `[${opts.ownerName}] ${task.title}` : task.title,
     startsAt,
     endsAt,
     location: null,
@@ -111,6 +159,7 @@ function taskToEvent(task: Task): Event {
     source: "local",
     googleEventId: task.googleEventId ?? null,
     taskId: task.id,
+    ownerName: opts.ownerName ?? null,
   };
 }
 

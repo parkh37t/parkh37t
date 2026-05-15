@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { headers } from "next/headers";
 import { Nav } from "@/components/nav";
 import { GoogleReconnectBanner } from "@/components/google-reconnect-banner";
 import { TaskModalProvider } from "@/components/task-modal/provider";
+import { getCurrentProfile } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Parkh37t Dashboard",
@@ -17,11 +19,25 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-export default function RootLayout({
+const BARE_PREFIXES = ["/login", "/signup", "/pending"];
+
+async function isBareLayout(): Promise<boolean> {
+  const h = await headers();
+  const path = h.get("x-pathname") ?? "";
+  return BARE_PREFIXES.some((p) => path.startsWith(p));
+}
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const profile = await getCurrentProfile().catch(() => null);
+  const navUser = profile
+    ? { name: profile.name, email: profile.email, role: profile.role }
+    : null;
+  const bare = await isBareLayout();
+
   return (
     <html lang="ko">
       <head>
@@ -34,14 +50,20 @@ export default function RootLayout({
       </head>
       <body>
         <TaskModalProvider>
-          <Nav />
-          <GoogleReconnectBanner />
-          <main className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-24 pt-6 lg:pt-10">
-            {children}
-          </main>
-          <footer className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-10 pt-2 text-[12px] text-ink-muted flex items-center justify-center gap-1.5">
-            Todo Dashboard · 데이터는 자동 저장됩니다
-          </footer>
+          {bare ? (
+            children
+          ) : (
+            <>
+              <Nav user={navUser} />
+              {profile?.role === "admin" ? <GoogleReconnectBanner /> : null}
+              <main className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-24 pt-6 lg:pt-10">
+                {children}
+              </main>
+              <footer className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-10 pt-2 text-[12px] text-ink-muted flex items-center justify-center gap-1.5">
+                Todo Dashboard · 데이터는 자동 저장됩니다
+              </footer>
+            </>
+          )}
         </TaskModalProvider>
       </body>
     </html>

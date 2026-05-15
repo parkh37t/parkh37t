@@ -1,7 +1,10 @@
 import { addMonths, startOfMonth } from "date-fns";
 import { Link as LinkIcon } from "lucide-react";
 import { listEventsBetween } from "@/lib/google-calendar";
-import { listTaskEventsBetween } from "@/lib/tasks";
+import {
+  listSharedTaskEventsBetween,
+  listTaskEventsBetween,
+} from "@/lib/tasks";
 import { mergeWithoutDuplicates } from "@/lib/event-merge";
 import {
   parseOffset,
@@ -12,6 +15,12 @@ import {
 import { MonthGrid } from "@/components/calendar/month-grid";
 import { MiniMonth } from "@/components/calendar/mini-month";
 import { ViewSwitcher } from "@/components/calendar/view-switcher";
+import {
+  MemberSelector,
+  type MemberOption,
+} from "@/components/calendar/member-selector";
+import { getCurrentProfile } from "@/lib/auth";
+import { getServiceSupabase, serviceSupabaseConfigured } from "@/lib/supabase";
 import type { Event } from "@/types";
 
 type SearchParams = Promise<{ view?: string; offset?: string }>;
@@ -26,11 +35,41 @@ export default async function CalendarPage({
   const offset = parseOffset(sp.offset);
   const range = rangeFor(view, offset);
 
-  const [calendarEvents, taskEvents] = await Promise.all([
-    listEventsBetween(range.start, range.end).catch(() => [] as Event[]),
+  const me = await getCurrentProfile();
+
+  const [calendarEvents, taskEvents, sharedEvents] = await Promise.all([
+    me?.role === "admin"
+      ? listEventsBetween(range.start, range.end).catch(() => [] as Event[])
+      : Promise.resolve([] as Event[]),
     listTaskEventsBetween(range.start, range.end).catch(() => [] as Event[]),
+    listSharedTaskEventsBetween(range.start, range.end).catch(
+      () => [] as Event[],
+    ),
   ]);
-  const events = mergeWithoutDuplicates(calendarEvents, taskEvents);
+  const events = mergeWithoutDuplicates(
+    calendarEvents,
+    [...taskEvents, ...sharedEvents],
+  );
+
+  let members: MemberOption[] = [];
+  let selectedViews: string[] = [];
+  if (me && serviceSupabaseConfigured) {
+    const supabase = getServiceSupabase();
+    const [{ data: others }, { data: views }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, name")
+        .eq("status", "approved")
+        .neq("id", me.id)
+        .order("name"),
+      supabase.from("calendar_views").select("viewed_user_id").eq("user_id", me.id),
+    ]);
+    members = (others ?? []).map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+    }));
+    selectedViews = (views ?? []).map((r) => String(r.viewed_user_id));
+  }
 
   return (
     <>
@@ -43,20 +82,27 @@ export default async function CalendarPage({
             {range.label}
           </h1>
           <p className="mt-1.5 text-[12.5px] text-zinc-400">
-            Wylie 컨버전스 2본부 + 마감일 있는 할 일
+            {me?.role === "admin"
+              ? "Wylie 컨버전스 2본부 + 마감일 있는 할 일"
+              : "내 일정 + 함께 볼 회원의 일정"}
           </p>
         </div>
-        <a
-          href="/api/google/auth"
-          className="inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-95 active:scale-[.98]"
-          style={{
-            background: "#7C6BF6",
-            boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
-          }}
-        >
-          <LinkIcon className="h-4 w-4" />
-          Google Calendar 연결
-        </a>
+        <div className="flex items-center gap-2">
+          <MemberSelector members={members} selected={selectedViews} />
+          {me?.role === "admin" ? (
+            <a
+              href="/api/google/auth"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold text-white shadow-sm transition hover:opacity-95"
+              style={{
+                background: "#7C6BF6",
+                boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
+              }}
+            >
+              <LinkIcon className="h-3.5 w-3.5" />
+              Google Calendar 연결
+            </a>
+          ) : null}
+        </div>
       </div>
 
       <div className="mb-5">
