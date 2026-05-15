@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 import { GoogleReconnectBanner } from "@/components/google-reconnect-banner";
+import { TaskModalProvider } from "@/components/task-modal/provider";
 
 export const metadata: Metadata = {
   title: "Parkh37t Dashboard",
@@ -32,14 +33,16 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <Nav />
-        <GoogleReconnectBanner />
-        <main className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-24 pt-6 lg:pt-10">
-          {children}
-        </main>
-        <footer className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-10 pt-2 text-[12px] text-ink-muted flex items-center justify-center gap-1.5">
-          Todo Dashboard · 데이터는 자동 저장됩니다
-        </footer>
+        <TaskModalProvider>
+          <Nav />
+          <GoogleReconnectBanner />
+          <main className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-24 pt-6 lg:pt-10">
+            {children}
+          </main>
+          <footer className="mx-auto max-w-[1200px] px-5 sm:px-6 lg:px-10 pb-10 pt-2 text-[12px] text-ink-muted flex items-center justify-center gap-1.5">
+            Todo Dashboard · 데이터는 자동 저장됩니다
+          </footer>
+        </TaskModalProvider>
       </body>
     </html>
   );

@@ -53,10 +53,18 @@ function readDateRange(formData: FormData): {
   ends_at: string | null;
 } {
   const date = String(formData.get("due_date") ?? "").trim();
+  const endDateRaw = String(formData.get("end_date") ?? "").trim();
+  const endDate = endDateRaw || date;
   const startTime = String(formData.get("due_time") ?? "").trim() || null;
   const endTime = String(formData.get("end_time") ?? "").trim() || null;
-  const due_at = combineDateAndTime(date, startTime);
-  let ends_at = endTime ? combineDateAndTime(date, endTime) : null;
+  const allDay = String(formData.get("all_day") ?? "") === "true";
+  const due_at = combineDateAndTime(date, allDay ? "00:00" : startTime);
+  let ends_at: string | null = null;
+  if (allDay) {
+    ends_at = combineDateAndTime(endDate || date, "23:59");
+  } else if (endTime || endDateRaw) {
+    ends_at = combineDateAndTime(endDate, endTime ?? startTime);
+  }
   if (due_at && ends_at) {
     const s = new Date(due_at).getTime();
     const e = new Date(ends_at).getTime();
