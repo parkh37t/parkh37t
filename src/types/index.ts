@@ -10,6 +10,7 @@ export type Task = {
   category?: Category;
   dueAt?: string | null;
   endsAt?: string | null;
+  location?: string | null;
   googleEventId?: string | null;
   createdAt: string;
 };

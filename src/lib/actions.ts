@@ -48,6 +48,16 @@ function readCategory(formData: FormData): Category {
     : "default";
 }
 
+function readLocation(formData: FormData): string {
+  return String(formData.get("location") ?? "").trim();
+}
+
+export type TaskSaveResult = {
+  ok: boolean;
+  google: "synced" | "skipped" | "failed";
+  googleError?: string;
+};
+
 function readDateRange(formData: FormData): {
   due_at: string | null;
   ends_at: string | null;
@@ -86,57 +96,71 @@ function descriptionFor(priority: Priority, category: Category): string {
     .join(" · ");
 }
 
-export async function createTask(formData: FormData) {
+export async function createTask(
+  formData: FormData,
+): Promise<TaskSaveResult> {
   const title = String(formData.get("title") ?? "").trim();
-  if (!title) return;
+  if (!title) return { ok: false, google: "skipped" };
   const priority = readPriority(formData);
   const category = readCategory(formData);
+  const location = readLocation(formData);
   const { due_at, ends_at } = readDateRange(formData);
 
   console.log(
     `[createTask] title="${title}" due_at=${due_at ?? "null"} ends_at=${ends_at ?? "null"}`,
   );
 
+  let result: TaskSaveResult = { ok: false, google: "skipped" };
+
   if (serviceSupabaseConfigured) {
     const supabase = getServiceSupabase();
+    const insertRow: Record<string, unknown> = {
+      title,
+      priority,
+      category,
+      due_at,
+      ends_at,
+    };
+    if (location) insertRow.location = location;
     const { data, error } = await supabase
       .from("tasks")
-      .insert({ title, priority, category, due_at, ends_at })
+      .insert(insertRow)
       .select("id")
       .single();
     if (error) {
       console.error("[createTask] insert failed:", error);
+      result = { ok: false, google: "skipped" };
     } else if (data && due_at) {
-      const result = await createTaskEvent({
+      const synced = await createTaskEvent({
         title,
         dueAt: due_at,
         endsAt: ends_at,
         description: descriptionFor(priority, category) || undefined,
+        location: location || null,
       });
-      if (result.ok) {
+      if (synced.ok) {
         const { error: updateError } = await supabase
           .from("tasks")
-          .update({ google_event_id: result.id })
+          .update({ google_event_id: synced.id })
           .eq("id", data.id);
         if (updateError) {
           console.error(
             "[createTask] save google_event_id failed:",
             updateError,
           );
-        } else {
-          console.log(
-            `[createTask] linked task ${data.id} -> google event ${result.id}`,
-          );
         }
+        result = { ok: true, google: "synced" };
       } else {
         console.warn(
-          `[createTask] task ${data.id} saved but Google event was not created: ${result.reason}`,
+          `[createTask] task ${data.id} saved but Google event was not created: ${synced.reason}`,
         );
+        result = { ok: true, google: "failed", googleError: synced.reason };
       }
-    } else if (data && !due_at) {
+    } else if (data) {
       console.log(
         `[createTask] task ${data.id} saved without due_at; skipping Google sync`,
       );
+      result = { ok: true, google: "skipped" };
     }
   } else {
     console.warn("[createTask] serviceSupabaseConfigured is false; nothing saved");
@@ -145,21 +169,25 @@ export async function createTask(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/calendar");
+  return result;
 }
 
-export async function updateTask(formData: FormData) {
+export async function updateTask(
+  formData: FormData,
+): Promise<TaskSaveResult> {
   const id = String(formData.get("id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
-  if (!id || !title) return;
+  if (!id || !title) return { ok: false, google: "skipped" };
   const priority = readPriority(formData);
   const category = readCategory(formData);
+  const location = readLocation(formData);
   const { due_at, ends_at } = readDateRange(formData);
 
   if (!serviceSupabaseConfigured) {
     revalidatePath("/");
     revalidatePath("/tasks");
     revalidatePath("/calendar");
-    return;
+    return { ok: false, google: "skipped" };
   }
 
   const supabase = getServiceSupabase();
@@ -169,48 +197,69 @@ export async function updateTask(formData: FormData) {
     .eq("id", id)
     .maybeSingle();
 
+  const updateRow: Record<string, unknown> = {
+    title,
+    priority,
+    category,
+    due_at,
+    ends_at,
+  };
+  if (location) updateRow.location = location;
   const { error } = await supabase
     .from("tasks")
-    .update({ title, priority, category, due_at, ends_at })
+    .update(updateRow)
     .eq("id", id);
+  let result: TaskSaveResult = { ok: false, google: "skipped" };
   if (error) {
     console.error("updateTask failed:", error);
+    result = { ok: false, google: "skipped" };
   } else if (due_at) {
     const description = descriptionFor(priority, category) || undefined;
     if (existing?.google_event_id) {
-      await updateTaskEvent(String(existing.google_event_id), {
+      const synced = await updateTaskEvent(String(existing.google_event_id), {
         title,
         dueAt: due_at,
         endsAt: ends_at,
         description,
+        location: location || null,
       });
+      result = synced.ok
+        ? { ok: true, google: "synced" }
+        : { ok: true, google: "failed", googleError: synced.reason };
     } else {
-      const result = await createTaskEvent({
+      const synced = await createTaskEvent({
         title,
         dueAt: due_at,
         endsAt: ends_at,
         description,
+        location: location || null,
       });
-      if (result.ok) {
+      if (synced.ok) {
         await supabase
           .from("tasks")
-          .update({ google_event_id: result.id })
+          .update({ google_event_id: synced.id })
           .eq("id", id);
+        result = { ok: true, google: "synced" };
       } else {
-        console.warn(`[updateTask] Google event not created: ${result.reason}`);
+        console.warn(`[updateTask] Google event not created: ${synced.reason}`);
+        result = { ok: true, google: "failed", googleError: synced.reason };
       }
     }
-  } else if (existing?.google_event_id) {
-    await deleteTaskEvent(String(existing.google_event_id));
-    await supabase
-      .from("tasks")
-      .update({ google_event_id: null })
-      .eq("id", id);
+  } else {
+    if (existing?.google_event_id) {
+      await deleteTaskEvent(String(existing.google_event_id));
+      await supabase
+        .from("tasks")
+        .update({ google_event_id: null })
+        .eq("id", id);
+    }
+    result = { ok: true, google: "skipped" };
   }
 
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/calendar");
+  return result;
 }
 
 export async function toggleTask(formData: FormData) {
@@ -244,7 +293,7 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
   const supabase = getServiceSupabase();
   const { data: existing } = await supabase
     .from("tasks")
-    .select("title, priority, category, due_at, ends_at, google_event_id")
+    .select("title, priority, category, due_at, ends_at, location, google_event_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -288,21 +337,25 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
     }
   }
 
+  const locationStr = (existing.location as string | null) ?? null;
+
   let result: SyncResult;
   if (existing.google_event_id) {
-    await updateTaskEvent(String(existing.google_event_id), {
+    const updated = await updateTaskEvent(String(existing.google_event_id), {
       title: String(existing.title),
       dueAt: dueAtStr,
       endsAt: endsAtStr,
       description,
+      location: locationStr,
     });
-    result = { ok: true };
+    result = updated.ok ? { ok: true } : { ok: false, error: updated.reason };
   } else {
     const created = await createTaskEvent({
       title: String(existing.title),
       dueAt: dueAtStr,
       endsAt: endsAtStr,
       description,
+      location: locationStr,
     });
     if (created.ok) {
       const { error } = await supabase

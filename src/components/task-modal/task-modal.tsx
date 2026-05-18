@@ -67,23 +67,6 @@ function isoToParts(iso: string | null | undefined): {
   };
 }
 
-function formatKoreanDate(yyyymmdd: string): string {
-  if (!yyyymmdd) return "날짜 선택";
-  const [y, m, d] = yyyymmdd.split("-").map((v) => parseInt(v, 10));
-  if (!y || !m || !d) return yyyymmdd;
-  return `${y}년 ${m}월 ${d}일`;
-}
-
-function formatKoreanTime(hhmm: string): string {
-  if (!hhmm) return "시간";
-  const [hStr, mStr] = hhmm.split(":");
-  const h = parseInt(hStr, 10);
-  if (Number.isNaN(h)) return hhmm;
-  const ampm = h < 12 ? "오전" : "오후";
-  const hour12 = h === 0 ? 12 : h <= 12 ? h : h - 12;
-  return `${ampm} ${hour12}:${mStr ?? "00"}`;
-}
-
 function todayLocalDate(): string {
   return isoToParts(new Date().toISOString()).date;
 }
@@ -99,6 +82,7 @@ export type TaskModalEditInput = {
   category?: Category;
   dueAt?: string | null;
   endsAt?: string | null;
+  location?: string | null;
 };
 
 export type TaskModalMode =
@@ -134,6 +118,7 @@ export function TaskModal({
         endTime: end.time || start.time || "10:00",
         priority: t.priority ?? "med",
         category: t.category ?? "default",
+        location: t.location ?? "",
         allDay: Boolean(t.dueAt) && !start.time,
       } as const;
     }
@@ -165,6 +150,7 @@ export function TaskModal({
       endTime: end,
       priority: "med" as Priority,
       category: "default" as Category,
+      location: "",
       allDay: false,
     } as const;
   }, [isEdit, mode]);
@@ -176,8 +162,11 @@ export function TaskModal({
   const [endTime, setEndTime] = useState(initial.endTime);
   const [priority, setPriority] = useState<Priority>(initial.priority);
   const [category, setCategory] = useState<Category>(initial.category);
+  const [location, setLocation] = useState(initial.location);
   const [allDay, setAllDay] = useState(initial.allDay);
   const [error, setError] = useState<string | null>(null);
+  const [googleWarning, setGoogleWarning] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
   const [deleting, startDeleteTransition] = useTransition();
   const titleRef = useRef<HTMLInputElement>(null);
@@ -191,8 +180,11 @@ export function TaskModal({
     setEndTime(initial.endTime);
     setPriority(initial.priority);
     setCategory(initial.category);
+    setLocation(initial.location);
     setAllDay(initial.allDay);
     setError(null);
+    setGoogleWarning(null);
+    setSaved(false);
     requestAnimationFrame(() => titleRef.current?.focus());
   }, [open, initial]);
 
@@ -213,6 +205,10 @@ export function TaskModal({
 
   function save(e?: FormEvent) {
     e?.preventDefault();
+    if (saved && !isEdit) {
+      onClose();
+      return;
+    }
     const trimmed = title.trim();
     if (!trimmed) {
       setError("제목을 입력해주세요.");
@@ -220,12 +216,14 @@ export function TaskModal({
       return;
     }
     setError(null);
+    setGoogleWarning(null);
 
     const fd = new FormData();
     if (isEdit) fd.append("id", (mode as { task: TaskModalEditInput }).task.id);
     fd.append("title", trimmed);
     fd.append("priority", priority);
     fd.append("category", category);
+    if (location.trim()) fd.append("location", location.trim());
     if (startDate) {
       fd.append("due_date", startDate);
       fd.append("end_date", endDate || startDate);
@@ -239,8 +237,15 @@ export function TaskModal({
 
     startTransition(async () => {
       try {
-        if (isEdit) await updateTask(fd);
-        else await createTask(fd);
+        const result = isEdit ? await updateTask(fd) : await createTask(fd);
+        if (result.ok && result.google === "failed") {
+          setSaved(true);
+          setGoogleWarning(
+            result.googleError ??
+              "Google Calendar 동기화에 실패했어요. 잠시 후 다시 시도해주세요.",
+          );
+          return;
+        }
         onClose();
       } catch (err) {
         console.error("[TaskModal] save failed", err);
@@ -301,14 +306,18 @@ export function TaskModal({
           <button
             type="button"
             onClick={() => save()}
-            disabled={pending || !title.trim()}
+            disabled={pending || (!saved && !title.trim())}
             className="inline-flex h-10 shrink-0 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white shadow-sm transition disabled:opacity-50"
             style={{
               background: "#7C6BF6",
               boxShadow: "0 4px 14px -4px rgba(124,107,246,0.55)",
             }}
           >
-            {pending ? "저장중…" : "저장"}
+            {pending
+              ? "저장중…"
+              : saved && !isEdit
+                ? "닫기"
+                : "저장"}
           </button>
         </div>
 
@@ -327,15 +336,12 @@ export function TaskModal({
                   setStartDate(v);
                   if (!endDate || endDate < v) setEndDate(v);
                 }}
-                display={formatKoreanDate(startDate)}
               />
               {!allDay ? (
                 <PillInput
                   type="time"
                   value={startTime}
                   onChange={setStartTime}
-                  display={formatKoreanTime(startTime)}
-                  className="min-w-[120px]"
                 />
               ) : null}
               <span className="px-1 text-sm text-zinc-400">-</span>
@@ -344,15 +350,12 @@ export function TaskModal({
                   type="time"
                   value={endTime}
                   onChange={setEndTime}
-                  display={formatKoreanTime(endTime)}
-                  className="min-w-[120px]"
                 />
               ) : null}
               <PillInput
                 type="date"
                 value={endDate}
                 onChange={setEndDate}
-                display={formatKoreanDate(endDate)}
                 min={startDate || undefined}
               />
             </div>
@@ -441,14 +444,18 @@ export function TaskModal({
             </div>
           </Row>
 
-          {/* Hint rows (placeholders to mirror GCal layout — disabled in this app) */}
+          {/* Location */}
           <Row
-            icon={<MapPin className="h-5 w-5 text-zinc-300" />}
+            icon={<MapPin className="h-5 w-5 text-zinc-400" />}
             label="위치"
           >
-            <span className="text-[12.5px] text-zinc-400">
-              위치 입력은 추후 지원 예정입니다.
-            </span>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="장소 또는 주소 (선택)"
+              className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-[14px] text-ink placeholder:text-zinc-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-300/40"
+            />
           </Row>
           <Row
             icon={<Bell className="h-5 w-5 text-zinc-300" />}
@@ -462,6 +469,21 @@ export function TaskModal({
           {error ? (
             <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12.5px] text-rose-700">
               {error}
+            </div>
+          ) : null}
+
+          {googleWarning ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[12.5px] text-amber-800">
+              <div className="font-semibold">
+                할 일은 저장됐지만 Google Calendar 동기화에 실패했어요.
+              </div>
+              <div className="mt-1 text-amber-700">{googleWarning}</div>
+              <a
+                href="/api/google/auth"
+                className="mt-2 inline-flex h-8 items-center rounded-full bg-amber-600 px-3 text-[12px] font-semibold text-white transition hover:bg-amber-700"
+              >
+                Google 재연결
+              </a>
             </div>
           ) : null}
         </form>
@@ -516,40 +538,63 @@ function PillInput({
   type,
   value,
   onChange,
-  display,
   className,
   min,
 }: {
   type: "date" | "time";
   value: string;
   onChange: (v: string) => void;
-  display: string;
   className?: string;
   min?: string;
 }) {
   const isDate = type === "date";
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openPicker() {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    if (typeof el.showPicker === "function") {
+      try {
+        el.showPicker();
+      } catch {
+        /* showPicker may throw if not user-initiated — ignore */
+      }
+    }
+  }
+
   return (
-    <label
+    <div
+      onClick={(e) => {
+        // Click on the value itself → place caret so 시/분/날짜 can be
+        // typed by hand. Click anywhere else on the pill → open the
+        // native date/time picker.
+        if (e.target !== inputRef.current) openPicker();
+      }}
       className={
-        "relative inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg bg-zinc-100 px-3 text-[13.5px] font-medium text-ink transition hover:bg-zinc-200/70 " +
+        "inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg bg-zinc-100 px-3 text-[13.5px] font-medium text-ink transition hover:bg-zinc-200/70 focus-within:ring-2 focus-within:ring-violet-300/40 " +
         (className ?? "")
       }
     >
       {isDate ? (
-        <CalendarIcon className="h-4 w-4 text-zinc-500" aria-hidden />
+        <CalendarIcon className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
       ) : (
-        <Clock className="h-4 w-4 text-zinc-500" aria-hidden />
+        <Clock className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
       )}
-      <span className="tabular-nums">{display}</span>
-      <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
       <input
+        ref={inputRef}
         type={type}
         value={value}
         min={min}
+        step={isDate ? undefined : 60}
         onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
         aria-label={isDate ? "날짜 선택" : "시간 선택"}
+        className={
+          "cursor-text bg-transparent tabular-nums text-ink outline-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden " +
+          (isDate ? "w-[7rem]" : "w-[5.25rem]")
+        }
       />
-    </label>
+      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" aria-hidden />
+    </div>
   );
 }

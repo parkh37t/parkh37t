@@ -164,6 +164,7 @@ export function TaskItem({ task }: { task: Task }) {
             category: task.category,
             dueAt: task.dueAt,
             endsAt: task.endsAt,
+            location: task.location,
           })
         }
         aria-label="수정"

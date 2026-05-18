@@ -112,6 +112,7 @@ export function MonthGrid({
                             category: ev.category,
                             dueAt: ev.startsAt,
                             endsAt: ev.endsAt,
+                            location: ev.location,
                           });
                         }}
                         disabled={!isLocal}

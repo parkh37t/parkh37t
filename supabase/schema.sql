@@ -12,12 +12,14 @@ create table if not exists tasks (
   category text check (category in ('work','personal','health','study','default')) default 'default',
   due_at timestamptz,
   ends_at timestamptz,
+  location text,
   google_event_id text,
   created_at timestamptz not null default now()
 );
 
 alter table tasks add column if not exists google_event_id text;
 alter table tasks add column if not exists ends_at timestamptz;
+alter table tasks add column if not exists location text;
 
 create table if not exists events (
   id uuid primary key default uuid_generate_v4(),
