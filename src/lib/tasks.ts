@@ -105,7 +105,7 @@ function taskToEvent(task: Task): Event {
     title: task.title,
     startsAt,
     endsAt,
-    location: null,
+    location: task.location ?? null,
     category: task.category ?? "default",
     priority: task.priority ?? "med",
     source: "local",
@@ -123,6 +123,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     category: row.category as Task["category"],
     dueAt: (row.due_at as string | null) ?? null,
     endsAt: (row.ends_at as string | null) ?? null,
+    location: (row.location as string | null) ?? null,
     googleEventId: (row.google_event_id as string | null) ?? null,
     createdAt: String(row.created_at),
   };

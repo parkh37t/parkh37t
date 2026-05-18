@@ -322,6 +322,7 @@ async function tryInsertEvent(
     dueAt: string;
     endsAt?: string | null;
     description?: string;
+    location?: string | null;
   },
 ): Promise<{ id: string | null; transient: boolean; error?: unknown }> {
   const calendar = google.calendar({ version: "v3", auth });
@@ -337,6 +338,7 @@ async function tryInsertEvent(
         summary: input.title,
         description:
           input.description ?? "Parkh37t Dashboard 할 일에서 동기화됨",
+        location: input.location || undefined,
         start: { dateTime: start.toISOString(), timeZone: APP_TIMEZONE },
         end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
       },
@@ -365,6 +367,7 @@ export async function createTaskEvent(input: {
   dueAt: string;
   endsAt?: string | null;
   description?: string;
+  location?: string | null;
 }): Promise<CreateEventOutcome> {
   const { auth, calendarId } = await getTargetCalendarId();
   if (!auth) {
@@ -443,10 +446,23 @@ export async function updateTaskEvent(
     dueAt: string;
     endsAt?: string | null;
     description?: string;
+    location?: string | null;
   },
-): Promise<void> {
+): Promise<CreateEventOutcome> {
   const { auth, calendarId } = await getTargetCalendarId();
-  if (!auth || !calendarId) return;
+  if (!auth) {
+    return {
+      ok: false,
+      reason:
+        "Google 인증 토큰이 없거나 만료됐습니다. 우측 상단 '재연결' 버튼으로 다시 연결해 주세요.",
+    };
+  }
+  if (!calendarId) {
+    return {
+      ok: false,
+      reason: `타겟 캘린더 "${TARGET_CALENDAR_NAME}"를 찾을 수 없습니다 (이름이 바뀌었거나 권한이 없을 수 있음).`,
+    };
+  }
   const calendar = google.calendar({ version: "v3", auth });
 
   const start = new Date(input.dueAt);
@@ -462,14 +478,17 @@ export async function updateTaskEvent(
         summary: input.title,
         description:
           input.description ?? "Parkh37t Dashboard 할 일에서 동기화됨",
+        location: input.location ?? "",
         start: { dateTime: start.toISOString(), timeZone: APP_TIMEZONE },
         end: { dateTime: end.toISOString(), timeZone: APP_TIMEZONE },
       },
     });
+    return { ok: true, id: eventId };
   } catch (e) {
     console.error(
       `[updateTaskEvent] failed (eventId=${eventId}): ${formatGoogleError(e)}`,
     );
+    return { ok: false, reason: `Google API 오류: ${formatGoogleError(e)}` };
   }
 }
 
