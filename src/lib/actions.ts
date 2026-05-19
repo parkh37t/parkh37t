@@ -56,7 +56,18 @@ export type TaskSaveResult = {
   ok: boolean;
   google: "synced" | "skipped" | "failed";
   googleError?: string;
+  saveError?: string;
 };
+
+function isMissingLocationColumn(error: {
+  code?: string;
+  message?: string;
+} | null): boolean {
+  if (!error) return false;
+  if (error.code === "42703") return true;
+  const m = (error.message ?? "").toLowerCase();
+  return m.includes("location") && m.includes("column");
+}
 
 function readDateRange(formData: FormData): {
   due_at: string | null;
@@ -122,14 +133,29 @@ export async function createTask(
       ends_at,
     };
     if (location) insertRow.location = location;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("tasks")
       .insert(insertRow)
       .select("id")
       .single();
+    if (error && location && isMissingLocationColumn(error)) {
+      console.warn(
+        "[createTask] 'location' column missing — retrying without it. Run the migration: alter table tasks add column if not exists location text;",
+      );
+      delete insertRow.location;
+      ({ data, error } = await supabase
+        .from("tasks")
+        .insert(insertRow)
+        .select("id")
+        .single());
+    }
     if (error) {
       console.error("[createTask] insert failed:", error);
-      result = { ok: false, google: "skipped" };
+      result = {
+        ok: false,
+        google: "skipped",
+        saveError: `저장 실패: ${error.message ?? "알 수 없는 DB 오류"}`,
+      };
     } else if (data && due_at) {
       const synced = await createTaskEvent({
         title,
@@ -205,14 +231,28 @@ export async function updateTask(
     ends_at,
   };
   if (location) updateRow.location = location;
-  const { error } = await supabase
+  let { error } = await supabase
     .from("tasks")
     .update(updateRow)
     .eq("id", id);
+  if (error && location && isMissingLocationColumn(error)) {
+    console.warn(
+      "[updateTask] 'location' column missing — retrying without it. Run the migration: alter table tasks add column if not exists location text;",
+    );
+    delete updateRow.location;
+    ({ error } = await supabase
+      .from("tasks")
+      .update(updateRow)
+      .eq("id", id));
+  }
   let result: TaskSaveResult = { ok: false, google: "skipped" };
   if (error) {
     console.error("updateTask failed:", error);
-    result = { ok: false, google: "skipped" };
+    result = {
+      ok: false,
+      google: "skipped",
+      saveError: `저장 실패: ${error.message ?? "알 수 없는 DB 오류"}`,
+    };
   } else if (due_at) {
     const description = descriptionFor(priority, category) || undefined;
     if (existing?.google_event_id) {
@@ -293,7 +333,7 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
   const supabase = getServiceSupabase();
   const { data: existing } = await supabase
     .from("tasks")
-    .select("title, priority, category, due_at, ends_at, location, google_event_id")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
 
