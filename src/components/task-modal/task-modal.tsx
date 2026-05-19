@@ -238,7 +238,14 @@ export function TaskModal({
     startTransition(async () => {
       try {
         const result = isEdit ? await updateTask(fd) : await createTask(fd);
-        if (result.ok && result.google === "failed") {
+        if (!result.ok) {
+          setError(
+            result.saveError ??
+              "저장에 실패했어요. 잠시 후 다시 시도해주세요.",
+          );
+          return;
+        }
+        if (result.google === "failed") {
           setSaved(true);
           setGoogleWarning(
             result.googleError ??
