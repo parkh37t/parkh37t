@@ -38,3 +38,6 @@ Thumbs.db
 # supabase
 supabase/.branches
 supabase/.temp
+
+# claude code (local-only settings)
+.claude/settings.local.json
