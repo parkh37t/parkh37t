@@ -41,7 +41,7 @@ export function MiniMonth({
   for (let d = gridStart; d <= gridEnd; d = addDays(d, 1)) days.push(d);
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-zinc-100 bg-white p-2.5 transition hover:-translate-y-px hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="flex flex-col gap-1.5 rounded-xl border border-zinc-100 bg-white p-2.5 transition hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-semibold">
           {format(reference, "M월", { locale: ko })}

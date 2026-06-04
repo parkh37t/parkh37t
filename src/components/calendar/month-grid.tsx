@@ -41,7 +41,7 @@ export function MonthGrid({
   for (let d = gridStart; d <= gridEnd; d = addDays(d, 1)) days.push(d);
 
   return (
-    <div className="card-interactive flex flex-col gap-3">
+    <div className="card flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">
           {format(reference, "yyyy년 M월", { locale: ko })}

@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import {
   endOfDayKst,
   endOfWeekKst,
@@ -22,6 +23,10 @@ const TARGET_CALENDAR_NAME =
   process.env.GOOGLE_CALENDAR_NAME?.trim() || "Wylie 컨버전스 2본부";
 
 const APP_TIMEZONE = process.env.APP_TIMEZONE?.trim() || "Asia/Seoul";
+
+// Bound every Google API round-trip so a slow/hung request can't block the
+// whole server render indefinitely (gaxios honors this `timeout` in ms).
+const GOOGLE_TIMEOUT_MS = 8000;
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
@@ -46,31 +51,36 @@ export function getAuthUrl() {
   });
 }
 
-async function loadTokensWithCookieFallback(): Promise<StoredTokens | null> {
-  const stored = await getStoredTokens();
-  if (stored) return stored;
+// Memoized per server request: a single dashboard render fans out to
+// googleConnected + TodaySchedule + WeekView, which would otherwise each
+// re-read the token row. cache() collapses them into one DB read.
+const loadTokensWithCookieFallback = cache(
+  async function loadTokensWithCookieFallbackUncached(): Promise<StoredTokens | null> {
+    const stored = await getStoredTokens();
+    if (stored) return stored;
 
-  const cookieToken = (await cookies()).get(TOKEN_COOKIE)?.value;
-  if (!cookieToken) return null;
+    const cookieToken = (await cookies()).get(TOKEN_COOKIE)?.value;
+    if (!cookieToken) return null;
 
-  try {
-    const parsed = JSON.parse(cookieToken);
-    if (!parsed?.access_token) return null;
-    const migrated: StoredTokens = {
-      access_token: parsed.access_token,
-      refresh_token: parsed.refresh_token ?? null,
-      expiry_date: parsed.expiry_date ?? null,
-      scope: parsed.scope ?? null,
-      token_type: parsed.token_type ?? null,
-    };
-    await saveStoredTokens(migrated);
-    console.log("[google] migrated tokens from cookie to DB");
-    return migrated;
-  } catch (e) {
-    console.warn("[google] cookie migration failed:", e);
-    return null;
-  }
-}
+    try {
+      const parsed = JSON.parse(cookieToken);
+      if (!parsed?.access_token) return null;
+      const migrated: StoredTokens = {
+        access_token: parsed.access_token,
+        refresh_token: parsed.refresh_token ?? null,
+        expiry_date: parsed.expiry_date ?? null,
+        scope: parsed.scope ?? null,
+        token_type: parsed.token_type ?? null,
+      };
+      await saveStoredTokens(migrated);
+      console.log("[google] migrated tokens from cookie to DB");
+      return migrated;
+    } catch (e) {
+      console.warn("[google] cookie migration failed:", e);
+      return null;
+    }
+  },
+);
 
 export async function googleConnected(): Promise<boolean> {
   if (!googleConfigured()) return false;
@@ -116,7 +126,13 @@ function attachTokenPersistence(
   });
 }
 
-async function getAuthorizedClient() {
+// Memoized per server request. Critically, this means the 2+ widgets that
+// each need an authorized client share ONE token load and AT MOST ONE
+// refresh. Without this, concurrent refreshes race: if refresh-token
+// rotation is enabled, the loser gets invalid_grant and clears the tokens
+// the winner just saved — which is why the calendar would silently empty
+// out about an hour after connecting.
+const getAuthorizedClient = cache(async function getAuthorizedClientUncached() {
   if (!googleConfigured()) {
     console.warn("[google] not configured (missing CLIENT_ID/SECRET/REDIRECT)");
     return null;
@@ -187,7 +203,7 @@ async function getAuthorizedClient() {
   }
 
   return oauth;
-}
+});
 
 function normalize(value: string) {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
@@ -198,12 +214,32 @@ function matchesTargetCalendar(summary: string | null | undefined) {
   return normalize(summary) === normalize(TARGET_CALENDAR_NAME);
 }
 
-type CalendarIdCache = { value: string; expiresAt: number };
-let calendarIdCache: CalendarIdCache | null = null;
+type CalendarIdsCache = { value: string[]; expiresAt: number };
+let calendarIdsCache: CalendarIdsCache | null = null;
 const CALENDAR_ID_TTL_MS = 5 * 60 * 1000;
 
 function clearCalendarIdCache() {
-  calendarIdCache = null;
+  calendarIdsCache = null;
+}
+
+// The calendar list almost never changes, yet fetchEvents used to call
+// calendarList.list on every single event fetch (today + week + month all
+// hit it). Cache the resolved IDs for a few minutes so one render makes one
+// list call instead of several.
+async function resolveCalendarIdsCached(
+  auth: NonNullable<Awaited<ReturnType<typeof getAuthorizedClient>>>,
+): Promise<string[]> {
+  if (calendarIdsCache && calendarIdsCache.expiresAt > Date.now()) {
+    return calendarIdsCache.value;
+  }
+  const ids = await resolveCalendarIds(auth);
+  if (ids.length > 0) {
+    calendarIdsCache = {
+      value: ids,
+      expiresAt: Date.now() + CALENDAR_ID_TTL_MS,
+    };
+  }
+  return ids;
 }
 
 async function resolveCalendarIds(
@@ -211,7 +247,10 @@ async function resolveCalendarIds(
 ): Promise<string[]> {
   try {
     const calendar = google.calendar({ version: "v3", auth });
-    const list = await calendar.calendarList.list();
+    const list = await calendar.calendarList.list(
+      {},
+      { timeout: GOOGLE_TIMEOUT_MS },
+    );
     const items = list.data.items ?? [];
     const matched = items.filter((c) =>
       matchesTargetCalendar(c.summary ?? c.summaryOverride),
@@ -237,19 +276,22 @@ async function fetchEvents(timeMin: Date, timeMax: Date): Promise<Event[]> {
   const auth = await getAuthorizedClient();
   if (!auth) return [];
   const calendar = google.calendar({ version: "v3", auth });
-  const calendarIds = await resolveCalendarIds(auth);
+  const calendarIds = await resolveCalendarIdsCached(auth);
   if (calendarIds.length === 0) return [];
 
   const all: Event[] = [];
   for (const calendarId of calendarIds) {
     try {
-      const res = await calendar.events.list({
-        calendarId,
-        timeMin: timeMin.toISOString(),
-        timeMax: timeMax.toISOString(),
-        singleEvents: true,
-        orderBy: "startTime",
-      });
+      const res = await calendar.events.list(
+        {
+          calendarId,
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          singleEvents: true,
+          orderBy: "startTime",
+        },
+        { timeout: GOOGLE_TIMEOUT_MS },
+      );
       for (const it of res.data.items ?? []) {
         all.push({
           id: String(it.id),
@@ -296,16 +338,8 @@ async function getTargetCalendarId(): Promise<{
   const auth = await getAuthorizedClient();
   if (!auth) return { auth: null, calendarId: null };
 
-  if (calendarIdCache && calendarIdCache.expiresAt > Date.now()) {
-    return { auth, calendarId: calendarIdCache.value };
-  }
-
-  const ids = await resolveCalendarIds(auth);
-  const id = ids[0] ?? null;
-  if (id) {
-    calendarIdCache = { value: id, expiresAt: Date.now() + CALENDAR_ID_TTL_MS };
-  }
-  return { auth, calendarId: id };
+  const ids = await resolveCalendarIdsCached(auth);
+  return { auth, calendarId: ids[0] ?? null };
 }
 
 function formatGoogleError(e: unknown): string {
