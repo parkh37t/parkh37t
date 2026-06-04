@@ -12,16 +12,59 @@ import {
 } from "@/lib/supabase";
 import {
   descriptionFor,
+  isFetchFailedError,
   isMissingLocationColumn,
+  NETWORK_SAVE_ERROR_MESSAGE,
   readCategory,
   readDateRange,
   readLocation,
   readPriority,
+  summarizeError,
   type TaskSaveResult,
 } from "@/lib/task-helpers";
 import type { Category, Priority } from "@/types";
 
 export type { TaskSaveResult } from "@/lib/task-helpers";
+
+const NETWORK_RETRY_DELAY_MS = 500;
+
+// supabase-js builders are one-shot thenables (not real Promises), so the
+// caller must supply a factory that returns a fresh builder per attempt.
+async function withFetchRetry<T extends { error: unknown }>(
+  label: string,
+  attempt: () => PromiseLike<T>,
+): Promise<T> {
+  const first = await attempt();
+  if (!first.error || !isFetchFailedError(first.error)) return first;
+  console.warn(
+    `[${label}] fetch failed on first attempt: ${summarizeError(first.error)} — retrying in ${NETWORK_RETRY_DELAY_MS}ms`,
+  );
+  await new Promise((r) => setTimeout(r, NETWORK_RETRY_DELAY_MS));
+  const second = await attempt();
+  if (second.error && isFetchFailedError(second.error)) {
+    console.error(
+      `[${label}] fetch failed on retry: ${summarizeError(second.error)}`,
+    );
+  }
+  return second;
+}
+
+function errorMessageOf(error: unknown): string | undefined {
+  if (error && typeof error === "object" && "message" in error) {
+    const m = (error as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return undefined;
+}
+
+function saveErrorFor(label: string, error: unknown): string {
+  if (isFetchFailedError(error)) {
+    console.error(`[${label}] network error: ${summarizeError(error)}`);
+    return NETWORK_SAVE_ERROR_MESSAGE;
+  }
+  console.error(`[${label}] db error: ${summarizeError(error)}`);
+  return `저장 실패: ${errorMessageOf(error) ?? "알 수 없는 DB 오류"}`;
+}
 
 export async function createTask(
   formData: FormData,
@@ -49,28 +92,23 @@ export async function createTask(
       ends_at,
     };
     if (location) insertRow.location = location;
-    let { data, error } = await supabase
-      .from("tasks")
-      .insert(insertRow)
-      .select("id")
-      .single();
+    let { data, error } = await withFetchRetry("createTask.insert", () =>
+      supabase.from("tasks").insert(insertRow).select("id").single(),
+    );
     if (error && location && isMissingLocationColumn(error)) {
       console.warn(
         "[createTask] 'location' column missing — retrying without it. Run the migration: alter table tasks add column if not exists location text;",
       );
       delete insertRow.location;
-      ({ data, error } = await supabase
-        .from("tasks")
-        .insert(insertRow)
-        .select("id")
-        .single());
+      ({ data, error } = await withFetchRetry("createTask.insert.noLoc", () =>
+        supabase.from("tasks").insert(insertRow).select("id").single(),
+      ));
     }
     if (error) {
-      console.error("[createTask] insert failed:", error);
       result = {
         ok: false,
         google: "skipped",
-        saveError: `저장 실패: ${error.message ?? "알 수 없는 DB 오류"}`,
+        saveError: saveErrorFor("createTask", error),
       };
     } else if (data && due_at) {
       const synced = await createTaskEvent({
@@ -147,27 +185,24 @@ export async function updateTask(
     ends_at,
   };
   if (location) updateRow.location = location;
-  let { error } = await supabase
-    .from("tasks")
-    .update(updateRow)
-    .eq("id", id);
+  let { error } = await withFetchRetry("updateTask.update", () =>
+    supabase.from("tasks").update(updateRow).eq("id", id),
+  );
   if (error && location && isMissingLocationColumn(error)) {
     console.warn(
       "[updateTask] 'location' column missing — retrying without it. Run the migration: alter table tasks add column if not exists location text;",
     );
     delete updateRow.location;
-    ({ error } = await supabase
-      .from("tasks")
-      .update(updateRow)
-      .eq("id", id));
+    ({ error } = await withFetchRetry("updateTask.update.noLoc", () =>
+      supabase.from("tasks").update(updateRow).eq("id", id),
+    ));
   }
   let result: TaskSaveResult = { ok: false, google: "skipped" };
   if (error) {
-    console.error("updateTask failed:", error);
     result = {
       ok: false,
       google: "skipped",
-      saveError: `저장 실패: ${error.message ?? "알 수 없는 DB 오류"}`,
+      saveError: saveErrorFor("updateTask", error),
     };
   } else if (due_at) {
     const description = descriptionFor(priority, category) || undefined;
@@ -247,12 +282,26 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
   }
 
   const supabase = getServiceSupabase();
-  const { data: existing } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: existing, error: loadErr } = await withFetchRetry(
+    "syncTaskToGoogle.load",
+    () => supabase.from("tasks").select("*").eq("id", id).maybeSingle(),
+  );
 
+  if (loadErr) {
+    if (isFetchFailedError(loadErr)) {
+      console.error(
+        `[syncTaskToGoogle] network error loading task ${id}: ${summarizeError(loadErr)}`,
+      );
+      return { ok: false, error: NETWORK_SAVE_ERROR_MESSAGE };
+    }
+    console.error(
+      `[syncTaskToGoogle] load failed for ${id}: ${summarizeError(loadErr)}`,
+    );
+    return {
+      ok: false,
+      error: `할 일을 불러오지 못했습니다: ${errorMessageOf(loadErr) ?? "알 수 없는 DB 오류"}`,
+    };
+  }
   if (!existing) {
     console.warn(`[syncTaskToGoogle] task ${id} not found`);
     return { ok: false, error: "할 일을 찾을 수 없습니다." };
@@ -280,12 +329,15 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
     }
   }
   if (endsAtStr !== originalEnds) {
-    const { error: fixErr } = await supabase
-      .from("tasks")
-      .update({ ends_at: endsAtStr })
-      .eq("id", id);
+    const { error: fixErr } = await withFetchRetry(
+      "syncTaskToGoogle.fixEndsAt",
+      () =>
+        supabase.from("tasks").update({ ends_at: endsAtStr }).eq("id", id),
+    );
     if (fixErr) {
-      console.error("[syncTaskToGoogle] failed to persist corrected ends_at:", fixErr);
+      console.error(
+        `[syncTaskToGoogle] failed to persist corrected ends_at: ${summarizeError(fixErr)}`,
+      );
     } else {
       console.log(
         `[syncTaskToGoogle] corrected ends_at for task ${id}: ${originalEnds} -> ${endsAtStr ?? "null"}`,
@@ -314,15 +366,21 @@ export async function syncTaskToGoogle(taskId: string): Promise<SyncResult> {
       location: locationStr,
     });
     if (created.ok) {
-      const { error } = await supabase
-        .from("tasks")
-        .update({ google_event_id: created.id })
-        .eq("id", id);
+      const { error } = await withFetchRetry("syncTaskToGoogle.linkEvent", () =>
+        supabase
+          .from("tasks")
+          .update({ google_event_id: created.id })
+          .eq("id", id),
+      );
       if (error) {
-        console.error("[syncTaskToGoogle] save google_event_id failed:", error);
+        console.error(
+          `[syncTaskToGoogle] save google_event_id failed: ${summarizeError(error)}`,
+        );
         result = {
           ok: false,
-          error: "Google 이벤트는 만들었지만 DB에 id 저장 실패",
+          error: isFetchFailedError(error)
+            ? NETWORK_SAVE_ERROR_MESSAGE
+            : "Google 이벤트는 만들었지만 DB에 id 저장 실패",
         };
       } else {
         console.log(

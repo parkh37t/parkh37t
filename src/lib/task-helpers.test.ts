@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   combineDateAndTime,
   descriptionFor,
+  isFetchFailedError,
   isMissingLocationColumn,
   readCategory,
   readDateRange,
   readLocation,
   readPriority,
+  summarizeError,
 } from "./task-helpers";
 
 function fd(entries: Record<string, string>): FormData {
@@ -153,5 +155,62 @@ describe("isMissingLocationColumn", () => {
       false,
     );
     expect(isMissingLocationColumn(null)).toBe(false);
+  });
+});
+
+describe("isFetchFailedError", () => {
+  it("matches the undici 'TypeError: fetch failed' message", () => {
+    expect(isFetchFailedError({ message: "TypeError: fetch failed" })).toBe(true);
+    expect(isFetchFailedError({ message: "fetch failed" })).toBe(true);
+  });
+
+  it("walks the cause chain for known system error codes", () => {
+    const err = new TypeError("fetch failed");
+    (err as Error & { cause?: unknown }).cause = Object.assign(new Error("dns"), {
+      code: "ENOTFOUND",
+    });
+    expect(isFetchFailedError(err)).toBe(true);
+
+    const refused = { message: "x", cause: { code: "ECONNREFUSED" } };
+    expect(isFetchFailedError(refused)).toBe(true);
+
+    const timeout = {
+      message: "x",
+      cause: { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } },
+    };
+    expect(isFetchFailedError(timeout)).toBe(true);
+  });
+
+  it("returns false for Postgres errors and other non-network errors", () => {
+    expect(isFetchFailedError({ code: "23505", message: "duplicate key" })).toBe(
+      false,
+    );
+    expect(isFetchFailedError({ message: "permission denied" })).toBe(false);
+    expect(isFetchFailedError(null)).toBe(false);
+    expect(isFetchFailedError(undefined)).toBe(false);
+  });
+});
+
+describe("summarizeError", () => {
+  it("returns a placeholder for null/undefined", () => {
+    expect(summarizeError(null)).toBe("(no error)");
+    expect(summarizeError(undefined)).toBe("(no error)");
+  });
+
+  it("serializes a single error with code", () => {
+    expect(summarizeError({ message: "boom", code: "23505" })).toBe(
+      "boom code=23505",
+    );
+  });
+
+  it("walks the cause chain", () => {
+    const err = new TypeError("fetch failed");
+    (err as Error & { cause?: unknown }).cause = Object.assign(
+      new Error("getaddrinfo ENOTFOUND db.example"),
+      { code: "ENOTFOUND" },
+    );
+    expect(summarizeError(err)).toBe(
+      "fetch failed ← caused by ← getaddrinfo ENOTFOUND db.example code=ENOTFOUND",
+    );
   });
 });

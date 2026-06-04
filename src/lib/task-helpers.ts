@@ -96,3 +96,62 @@ export function isMissingLocationColumn(
   const m = (error.message ?? "").toLowerCase();
   return m.includes("location") && m.includes("column");
 }
+
+export const NETWORK_SAVE_ERROR_MESSAGE =
+  "네트워크 오류로 저장하지 못했어요. 잠시 후 다시 시도해주세요.";
+
+const NETWORK_ERROR_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+function collectCauseCodes(err: unknown, depth = 0): string[] {
+  if (!err || typeof err !== "object" || depth > 6) return [];
+  const out: string[] = [];
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === "string") out.push(code);
+  const cause = (err as { cause?: unknown }).cause;
+  return cause ? [...out, ...collectCauseCodes(cause, depth + 1)] : out;
+}
+
+// Node 18+ undici surfaces network failures as `TypeError: fetch failed`,
+// with the actual reason (DNS, refused, timeout, …) buried in `error.cause`.
+// supabase-js wraps that into a PostgrestError-like object preserving the
+// fetch failed message. Detect both forms.
+export function isFetchFailedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const message = String((error as { message?: unknown }).message ?? "").toLowerCase();
+  if (message.includes("fetch failed")) return true;
+  if (message.includes("network request failed")) return true;
+  return collectCauseCodes(error).some((c) => NETWORK_ERROR_CODES.has(c));
+}
+
+// Serialize an Error + its `cause` chain (Node 18+ pattern) for server logs.
+export function summarizeError(error: unknown): string {
+  if (error === null || error === undefined) return "(no error)";
+  if (typeof error !== "object") return String(error);
+  const parts: string[] = [];
+  let cur: unknown = error;
+  let depth = 0;
+  while (cur && typeof cur === "object" && depth < 6) {
+    const e = cur as { message?: unknown; code?: unknown; cause?: unknown };
+    const msg = typeof e.message === "string" ? e.message : "";
+    const code =
+      typeof e.code === "string" || typeof e.code === "number"
+        ? ` code=${e.code}`
+        : "";
+    parts.push(`${msg || "(no message)"}${code}`);
+    cur = e.cause;
+    depth++;
+  }
+  return parts.join(" ← caused by ← ");
+}
