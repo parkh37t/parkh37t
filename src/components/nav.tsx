@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, LayoutGrid, ListTodo, Menu, Sparkles, X } from "lucide-react";
+import { CalendarDays, Home, LayoutGrid, ListTodo, Menu, Sparkles, X } from "lucide-react";
 
 const links = [
   { href: "/", label: "대시보드", icon: LayoutGrid },
   { href: "/tasks", label: "할 일", icon: ListTodo },
   { href: "/calendar", label: "캘린더", icon: CalendarDays },
+  { href: "/house", label: "우리집 3D", icon: Home },
 ] as const;
 
 export function Nav() {
