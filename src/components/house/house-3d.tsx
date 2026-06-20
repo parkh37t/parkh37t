@@ -5,27 +5,27 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 export type HouseParams = {
-  floors: number;
+  floors: number; // red-brick floors above ground
   floorHeight: number;
   width: number;
   depth: number;
-  units: number;
-  piloti: boolean;
-  oktap: boolean;
-  tank: boolean;
-  ac: boolean;
+  basement: number; // exposed semi-basement height
+  sunroom: boolean; // corner glazed balcony (통유리 베란다)
+  gate: boolean; // boundary wall + 대문
+  carport: boolean; // canopy + parked SUV
+  context: boolean; // neighbour buildings
 };
 
 export const HOUSE_DEFAULTS: HouseParams = {
-  floors: 4,
-  floorHeight: 2.8,
+  floors: 2,
+  floorHeight: 2.7,
   width: 9,
-  depth: 13,
-  units: 2,
-  piloti: true,
-  oktap: true,
-  tank: true,
-  ac: true,
+  depth: 9.5,
+  basement: 1.1,
+  sunroom: true,
+  gate: true,
+  carport: true,
+  context: true,
 };
 
 type View = "front" | "corner" | "side" | "top";
@@ -37,8 +37,8 @@ type SceneApi = {
   dispose: () => void;
 };
 
-// Imperative Three.js controller. Lives outside React render so the WebGL
-// context is created exactly once; React only feeds it params.
+// Imperative Three.js controller — models the actual red-brick house at
+// 봉은사로 21길 57 (corner lot, hip clay-tile roof, glazed corner sunroom).
 function createScene(container: HTMLDivElement): SceneApi {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(container.clientWidth, container.clientHeight);
@@ -63,7 +63,7 @@ function createScene(container: HTMLDivElement): SceneApi {
     ctx.fillRect(0, 0, 2, 256);
     scene.background = new THREE.CanvasTexture(c);
   }
-  scene.fog = new THREE.Fog(0xcdd9e8, 70, 200);
+  scene.fog = new THREE.Fog(0xcdd9e8, 70, 220);
 
   const camera = new THREE.PerspectiveCamera(
     45,
@@ -71,7 +71,7 @@ function createScene(container: HTMLDivElement): SceneApi {
     0.1,
     1000,
   );
-  camera.position.set(24, 18, 28);
+  camera.position.set(22, 15, 26);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -80,37 +80,55 @@ function createScene(container: HTMLDivElement): SceneApi {
   controls.maxDistance = 95;
   controls.maxPolarAngle = Math.PI / 2.05;
 
-  scene.add(new THREE.HemisphereLight(0xbcd6ff, 0x55524c, 0.75));
-  const sun = new THREE.DirectionalLight(0xfff2d6, 2.2);
-  sun.position.set(28, 40, 18);
+  scene.add(new THREE.HemisphereLight(0xbcd6ff, 0x55524c, 0.8));
+  const sun = new THREE.DirectionalLight(0xfff2d6, 2.1);
+  sun.position.set(26, 38, 22);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 140;
-  sun.shadow.camera.left = -40;
-  sun.shadow.camera.right = 40;
-  sun.shadow.camera.top = 40;
-  sun.shadow.camera.bottom = -40;
+  sun.shadow.camera.far = 150;
+  sun.shadow.camera.left = -42;
+  sun.shadow.camera.right = 42;
+  sun.shadow.camera.top = 42;
+  sun.shadow.camera.bottom = -42;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
 
+  const std = (
+    color: number,
+    roughness: number,
+    metalness = 0,
+    extra: Partial<THREE.MeshStandardMaterialParameters> = {},
+  ) => new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+
   const M = {
-    wall: new THREE.MeshStandardMaterial({ color: 0xddd3c4, roughness: 0.92 }),
-    base: new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.85 }),
-    trim: new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.7 }),
-    frame: new THREE.MeshStandardMaterial({ color: 0x2b2c30, roughness: 0.6, metalness: 0.3 }),
-    glass: new THREE.MeshStandardMaterial({ color: 0x35505f, roughness: 0.12, metalness: 0.2 }),
-    door: new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.4, metalness: 0.5 }),
-    rail: new THREE.MeshStandardMaterial({ color: 0x1f2024, roughness: 0.5, metalness: 0.4 }),
-    roof: new THREE.MeshStandardMaterial({ color: 0x6f6b64, roughness: 0.95 }),
-    tank: new THREE.MeshStandardMaterial({ color: 0x9fb8c4, roughness: 0.4, metalness: 0.2 }),
-    ac: new THREE.MeshStandardMaterial({ color: 0xd7d7d2, roughness: 0.6 }),
-    car: new THREE.MeshStandardMaterial({ color: 0x394150, roughness: 0.35, metalness: 0.6 }),
-    carGlass: new THREE.MeshStandardMaterial({ color: 0x10141a, roughness: 0.2, metalness: 0.5 }),
-    asphalt: new THREE.MeshStandardMaterial({ color: 0x3c3d42, roughness: 1 }),
-    walk: new THREE.MeshStandardMaterial({ color: 0x9a9a97, roughness: 1 }),
-    yard: new THREE.MeshStandardMaterial({ color: 0x6f7d52, roughness: 1 }),
-    neighbor: new THREE.MeshStandardMaterial({ color: 0xb9b7b2, roughness: 0.95 }),
+    brick: std(0x9c4a36, 0.96),
+    paint: std(0xe8e3d8, 0.9), // white-painted lower wall
+    band: std(0xefeae0, 0.8), // concrete lintels / sills / bands
+    tile: std(0x9a4327, 0.82, 0, { side: THREE.DoubleSide }), // clay roof
+    ridge: std(0x7c3520, 0.8),
+    eave: std(0xf2efe6, 0.7),
+    glass: std(0x2c3b42, 0.12, 0.25),
+    frameW: std(0xf3f1ea, 0.6), // white window frames
+    frameD: std(0x33363b, 0.5, 0.2), // dark sashes
+    mint: std(0xbfe0d8, 0.8),
+    door: std(0x2b2e33, 0.4, 0.5),
+    gate: std(0x1b1b1e, 0.5, 0.6), // black 대문
+    canopy: std(0xd2e7ea, 0.25, 0.1, {
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+    }),
+    suv: std(0x5a4636, 0.4, 0.5),
+    suvGlass: std(0x141a1f, 0.2, 0.5),
+    meter: std(0xb4b0a4, 0.7),
+    ac: std(0xd7d7d2, 0.6),
+    rail: std(0x2a2b2e, 0.5, 0.4),
+    asphalt: std(0x3c3d42, 1),
+    walk: std(0x9a9a97, 1),
+    yard: std(0x70706a, 1),
+    nWhite: std(0xcfcdc8, 0.95),
+    nBrick: std(0x9d5743, 0.95),
   };
   const allMaterials = Object.values(M);
 
@@ -131,29 +149,83 @@ function createScene(container: HTMLDivElement): SceneApi {
     return m;
   };
 
-  // ---- static environment (built once) ----
+  // Hip roof (모임지붕) as a custom mesh; base at local y=0, ridge at height h.
+  const hipRoof = (w: number, d: number, h: number, mat: THREE.Material) => {
+    const hw = w / 2;
+    const hd = d / 2;
+    const pos: number[] = [];
+    const idx: number[] = [];
+    const add = (x: number, y: number, z: number) => {
+      pos.push(x, y, z);
+      return pos.length / 3 - 1;
+    };
+    const A = add(-hw, 0, -hd);
+    const B = add(hw, 0, -hd);
+    const C = add(hw, 0, hd);
+    const E = add(-hw, 0, hd);
+    if (w >= d) {
+      const R1 = add(-hw + hd, h, 0);
+      const R2 = add(hw - hd, h, 0);
+      idx.push(A, B, R2, A, R2, R1); // back
+      idx.push(C, E, R1, C, R1, R2); // front
+      idx.push(B, C, R2); // right hip
+      idx.push(E, A, R1); // left hip
+    } else {
+      const R1 = add(0, h, -hd + hw);
+      const R2 = add(0, h, hd - hw);
+      idx.push(A, E, R2, A, R2, R1); // left
+      idx.push(C, B, R1, C, R1, R2); // right
+      idx.push(B, A, R1); // back hip
+      idx.push(E, C, R2); // front hip
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  };
+
+  // Punched window with concrete lintel + sill. Anchored at top-centre (y=0 = head).
+  const punch = (w: number, h: number) => {
+    const g = new THREE.Group();
+    g.add(box(w, h, 0.05, M.glass, 0, -h, 0.02));
+    g.add(box(w + 0.04, h, 0.04, M.frameD, 0, -h, 0.0)); // recessed reveal
+    g.add(box(w + 0.22, 0.13, 0.14, M.band, 0, 0.0, 0.05)); // lintel
+    g.add(box(w + 0.22, 0.1, 0.16, M.band, 0, -h - 0.06, 0.05)); // sill
+    return g;
+  };
+
+  // Glazed sliding bay (large windows) with white frame + mullions.
+  const glazedBay = (w: number, h: number, depth: number) => {
+    const g = new THREE.Group();
+    g.add(box(w, h, depth, M.glass, 0, -h, 0)); // glass body (anchored top)
+    const t = 0.08;
+    g.add(box(w, t, depth + 0.02, M.frameW, 0, -t, 0)); // head
+    g.add(box(w, t, depth + 0.02, M.frameW, 0, -h, 0)); // sill rail
+    const panes = Math.max(2, Math.round(w / 0.9));
+    for (let i = 0; i <= panes; i++) {
+      const x = -w / 2 + (w * i) / panes;
+      g.add(box(t * 0.8, h, depth + 0.02, M.frameW, x, -h, 0));
+    }
+    g.add(box(w + 0.02, t, depth + 0.02, M.frameW, 0, -h / 2, 0)); // mid transom
+    return g;
+  };
+
   const env = new THREE.Group();
   scene.add(env);
   {
-    const road = box(140, 0.1, 140, M.asphalt, 0, -0.1, 0, false);
-    env.add(road);
-    env.add(box(44, 0.14, 7, M.walk, 0, -0.02, 13, false));
-    for (let i = -54; i <= 54; i += 6) {
-      env.add(box(2.4, 0.02, 0.28, M.trim, i, 0.02, 22, false));
-    }
-    const nh: Array<[number, number, number, number, number]> = [
-      [-16, 5, 10, 8, 14],
-      [16, 6, 10, 9, 13],
-      [-15, 4.5, -14, 11, 10],
-      [15, 5.5, -13, 10, 12],
-      [0, 7, -18, 14, 11],
-    ];
-    for (const [x, h, z, w, d] of nh) {
-      env.add(box(w, h, d, M.neighbor, x, 0, z));
+    env.add(box(150, 0.1, 150, M.asphalt, 0, -0.1, 0, false));
+    env.add(box(60, 0.14, 6, M.walk, 0, -0.02, 16, false)); // front sidewalk
+    env.add(box(6, 0.14, 60, M.walk, -16, -0.02, 0, false)); // side sidewalk (corner)
+    for (let i = -60; i <= 60; i += 6) {
+      const ln = box(0.16, 0.02, 2.4, M.band, -22, 0.02, i, false);
+      env.add(ln); // yellow-ish curb dashes (use band colour)
     }
   }
 
-  // ---- parametric house ----
   let house = new THREE.Group();
   scene.add(house);
 
@@ -164,177 +236,198 @@ function createScene(container: HTMLDivElement): SceneApi {
     scene.remove(house);
   };
 
-  const windowUnit = (w: number, h: number) => {
-    const g = new THREE.Group();
-    const t = 0.07;
-    g.add(box(w, h, 0.06, M.glass, 0, -h, 0));
-    g.add(box(w, t, 0.1, M.frame, 0, -t, 0.02));
-    g.add(box(w, t, 0.1, M.frame, 0, -h, 0.02));
-    g.add(box(t, h, 0.1, M.frame, -w / 2 + t / 2, -h, 0.02));
-    g.add(box(t, h, 0.1, M.frame, w / 2 - t / 2, -h, 0.02));
-    g.add(box(t, h, 0.09, M.frame, 0, -h, 0.02));
-    return g; // anchored at top-center (y = 0 is top edge)
-  };
-
   const build = (p: HouseParams) => {
     disposeHouse();
     house = new THREE.Group();
     scene.add(house);
 
-    const pilotiH = p.piloti ? 2.6 : 0;
-    const baseY = pilotiH;
     const W = p.width;
     const D = p.depth;
     const FH = p.floorHeight;
     const N = p.floors;
-    const topY = baseY + N * FH;
+    const BASE = p.basement;
+    const wallTop = BASE + N * FH; // top of brick walls (eaves level)
 
-    if (p.piloti) {
-      const cols: Array<[number, number]> = [
-        [-W / 2 + 0.5, -D / 2 + 0.5],
-        [W / 2 - 0.5, -D / 2 + 0.5],
-        [-W / 2 + 0.5, D / 2 - 0.5],
-        [W / 2 - 0.5, D / 2 - 0.5],
-        [0, -D / 2 + 0.5],
-      ];
-      for (const [x, z] of cols) house.add(box(0.55, pilotiH, 0.55, M.base, x, 0, z));
-      house.add(box(W * 0.34, pilotiH, D * 0.32, M.base, W * 0.22, 0, -D * 0.28));
-      house.add(box(0.9, pilotiH * 0.96, 0.06, M.door, W * 0.05, 0, -D * 0.28 + D * 0.16));
-      const car = new THREE.Group();
-      car.position.set(-W * 0.18, 0, D * 0.18);
-      car.add(box(1.9, 0.7, 4.4, M.car, 0, 0.35, 0));
-      car.add(box(1.8, 0.6, 2.4, M.carGlass, 0, 1.0, -0.1));
-      for (const [cx, cz] of [
-        [-0.95, 1.4],
-        [0.95, 1.4],
-        [-0.95, -1.4],
-        [0.95, -1.4],
-      ] as Array<[number, number]>) {
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.25, 18), M.rail);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(cx, 0.34, cz);
-        wheel.castShadow = true;
-        car.add(wheel);
+    // ---- main brick mass (basement + floors) ----
+    house.add(box(W, wallTop, D, M.brick, 0, 0, 0));
+    // painted concrete band at the basement top + each floor line
+    house.add(box(W + 0.08, 0.14, D + 0.08, M.band, 0, BASE - 0.07, 0));
+    for (let f = 1; f < N; f++) {
+      house.add(box(W + 0.06, 0.12, D + 0.06, M.band, 0, BASE + f * FH - 0.06, 0));
+    }
+
+    // ---- semi-basement low windows + mint entrance ----
+    house.add(box(2.2, BASE * 0.92, 0.12, M.mint, -W * 0.18, 0, D / 2 + 0.02)); // recess
+    house.add(box(1.0, BASE * 0.86, 0.06, M.door, -W * 0.18, 0, D / 2 + 0.09)); // dark door
+    for (const x of [W * 0.16, W * 0.34]) {
+      const bw = punch(1.0, 0.5);
+      bw.position.set(x, 0.78, D / 2 + 0.03);
+      house.add(bw);
+    }
+    // basement window on the visible side
+    const bsw = punch(1.0, 0.5);
+    bsw.position.set(-W / 2 - 0.03, 0.78, D * 0.2);
+    bsw.rotation.y = -Math.PI / 2;
+    house.add(bsw);
+
+    // ---- floors: front glazed bays + punched side/back windows ----
+    for (let f = 0; f < N; f++) {
+      const sillY = BASE + f * FH + 0.5;
+      const winTop = sillY + FH * 0.62;
+      const topFloor = f === N - 1;
+
+      // front: large glazed bay (top floor projects = sunroom)
+      const bayW = W * 0.62;
+      const bayDepth = topFloor && p.sunroom ? 0.65 : 0.12;
+      const bay = glazedBay(bayW, FH * 0.66, bayDepth);
+      bay.position.set(-W * 0.05, winTop, D / 2 + bayDepth / 2 + 0.02);
+      house.add(bay);
+
+      // top-floor corner return (wraps the sunroom around the left corner)
+      if (topFloor && p.sunroom) {
+        const ret = glazedBay(D * 0.34, FH * 0.66, 0.6);
+        ret.position.set(-W / 2 - 0.3, winTop, D * 0.28);
+        ret.rotation.y = -Math.PI / 2;
+        house.add(ret);
       }
-      house.add(car);
-      house.add(box(W, 0.3, D, M.base, 0, pilotiH - 0.3, 0));
+
+      // side (+x): two punched windows
+      for (const z of [D * 0.26, -D * 0.18]) {
+        const sw = punch(1.0, FH * 0.5);
+        sw.position.set(W / 2 + 0.03, winTop, z);
+        sw.rotation.y = Math.PI / 2;
+        house.add(sw);
+      }
+      // side (-x): one punched window (rest is sunroom return on top)
+      if (!(topFloor && p.sunroom)) {
+        const sw = punch(1.0, FH * 0.5);
+        sw.position.set(-W / 2 - 0.03, winTop, -D * 0.2);
+        sw.rotation.y = -Math.PI / 2;
+        house.add(sw);
+      }
+      // back (-z): two punched windows
+      for (const x of [-W * 0.22, W * 0.22]) {
+        const bw = punch(1.0, FH * 0.5);
+        bw.position.set(x, winTop, -D / 2 - 0.03);
+        bw.rotation.y = Math.PI;
+        house.add(bw);
+      }
+    }
+
+    // ---- hip clay-tile roof with overhang ----
+    const ov = 0.7;
+    const rW = W + 2 * ov;
+    const rD = D + 2 * ov;
+    const rH = Math.min(rW, rD) * 0.42;
+    house.add(box(rW, 0.12, rD, M.eave, 0, wallTop - 0.06, 0)); // white soffit/eave
+    const roof = hipRoof(rW, rD, rH, M.tile);
+    roof.position.y = wallTop;
+    house.add(roof);
+    // ridge cap + chimney
+    if (rW >= rD) {
+      house.add(box(rW - rD + 0.2, 0.18, 0.3, M.ridge, 0, wallTop + rH - 0.05, 0));
     } else {
-      house.add(box(W, pilotiH, D, M.base, 0, 0, 0));
+      house.add(box(0.3, 0.18, rD - rW + 0.2, M.ridge, 0, wallTop + rH - 0.05, 0));
+    }
+    house.add(box(0.7, 1.1, 0.7, M.brick, W * 0.3, wallTop + rH * 0.5, -D * 0.3));
+
+    // ---- wall details: AC units, gas meters ----
+    house.add(box(0.85, 0.6, 0.4, M.ac, -W * 0.05, BASE + (N - 1) * FH + 0.1, D / 2 + 0.3));
+    house.add(box(0.8, 0.5, 0.35, M.ac, W / 2 + 0.25, BASE + 0.4, -D * 0.18));
+    for (let i = 0; i < 3; i++) {
+      house.add(box(0.26, 0.4, 0.18, M.meter, W / 2 + 0.12, BASE + 0.2, D * 0.3 - i * 0.32));
     }
 
-    house.add(box(W, N * FH, D, M.wall, 0, baseY, 0));
-    if (!p.piloti) {
-      house.add(box(1.4, 2.2, 0.12, M.door, -W * 0.25, 0, D / 2 + 0.02));
-      house.add(box(2.0, 0.25, 1.0, M.trim, -W * 0.25, 2.2, D / 2 - 0.3));
-    }
-
-    for (let f = 0; f <= N; f++) {
-      const y = baseY + f * FH;
-      house.add(box(W + 0.18, 0.16, D + 0.18, M.trim, 0, y - 0.08, 0));
-    }
-
-    const winH = FH * 0.55;
-    const winY = 0.78;
-    const placeRow = (face: "front" | "back" | "left" | "right") => {
-      for (let f = 0; f < N; f++) {
-        const yTop = baseY + f * FH + winY + winH;
-        if (face === "front" || face === "back") {
-          const z = face === "front" ? D / 2 + 0.04 : -D / 2 - 0.04;
-          const count = p.units;
-          const slotW = W / count;
-          for (let i = 0; i < count; i++) {
-            const x = -W / 2 + slotW * (i + 0.5);
-            const wu = windowUnit(Math.min(slotW * 0.62, 2.2), winH);
-            wu.position.set(x, yTop, z);
-            if (face === "back") wu.rotation.y = Math.PI;
-            house.add(wu);
-            if (face === "front") {
-              house.add(
-                box(
-                  Math.min(slotW * 0.7, 2.4),
-                  0.6,
-                  0.06,
-                  M.rail,
-                  x,
-                  baseY + f * FH,
-                  D / 2 + 0.18,
-                ),
-              );
-            }
-          }
-        } else {
-          const x = face === "left" ? -W / 2 - 0.04 : W / 2 + 0.04;
-          const wu = windowUnit(Math.min(D * 0.3, 1.6), winH);
-          wu.position.set(x, yTop, -D * 0.12);
-          wu.rotation.y = face === "left" ? -Math.PI / 2 : Math.PI / 2;
-          house.add(wu);
-        }
+    // ---- boundary wall + 대문 (front + side, corner lot) ----
+    if (p.gate) {
+      const wallH = 1.5;
+      const fz = D / 2 + 3.0; // front boundary
+      const sx = -W / 2 - 3.0; // side boundary
+      const fLen = W + 6;
+      const sLen = D + 6;
+      // front wall (with gate opening near left)
+      const gateW = 2.2;
+      const leftLen = fLen / 2 - 1.0 - gateW; // segment left of gate
+      house.add(
+        box(leftLen, wallH * 0.78, 0.3, M.paint, -fLen / 2 + leftLen / 2, 0, fz),
+      );
+      house.add(box(leftLen, 0.32, 0.4, M.brick, -fLen / 2 + leftLen / 2, wallH * 0.78, fz));
+      const rightStart = -fLen / 2 + leftLen + gateW;
+      const rightLen = fLen - (leftLen + gateW);
+      house.add(box(rightLen, wallH * 0.78, 0.3, M.paint, rightStart + rightLen / 2, 0, fz));
+      house.add(box(rightLen, 0.32, 0.4, M.brick, rightStart + rightLen / 2, wallH * 0.78, fz));
+      // brick gate post with address plate "57"
+      const postX = -fLen / 2 + leftLen + gateW + 0.15;
+      house.add(box(0.5, 2.0, 0.5, M.brick, postX, 0, fz));
+      house.add(box(0.26, 0.34, 0.04, M.glass, postX, 1.35, fz + 0.26)); // blue plate
+      // black ornate double gate
+      const gx = -fLen / 2 + leftLen + gateW / 2;
+      house.add(box(gateW, 1.7, 0.08, M.gate, gx, 0, fz));
+      for (let i = 0; i < 6; i++) {
+        house.add(box(0.04, 1.4, 0.1, M.rail, gx - gateW / 2 + 0.2 + i * ((gateW - 0.4) / 5), 0.15, fz + 0.05));
       }
-    };
-    placeRow("front");
-    placeRow("back");
-    placeRow("left");
-    placeRow("right");
+      // side wall
+      house.add(box(0.3, wallH * 0.78, sLen, M.paint, sx, 0, fz - 3.0 - sLen / 2));
+      house.add(box(0.4, 0.32, sLen, M.brick, sx, wallH * 0.78, fz - 3.0 - sLen / 2));
+    }
 
-    house.add(box(W + 0.2, 0.3, D + 0.2, M.roof, 0, topY, 0));
-    const pp = 0.7;
-    const t = 0.14;
-    house.add(box(W + 0.2, pp, t, M.trim, 0, topY + 0.3, D / 2 + 0.03));
-    house.add(box(W + 0.2, pp, t, M.trim, 0, topY + 0.3, -D / 2 - 0.03));
-    house.add(box(t, pp, D + 0.2, M.trim, W / 2 + 0.03, topY + 0.3, 0));
-    house.add(box(t, pp, D + 0.2, M.trim, -W / 2 - 0.03, topY + 0.3, 0));
-
-    const roofTop = topY + 0.3;
-    if (p.oktap) {
-      const ow = Math.min(W * 0.5, 4);
-      const od = Math.min(D * 0.4, 4.5);
-      const oh = 2.5;
-      house.add(box(ow, oh, od, M.wall, -W * 0.12, roofTop, -D * 0.18));
-      house.add(box(ow + 0.16, 0.18, od + 0.16, M.roof, -W * 0.12, roofTop + oh, -D * 0.18));
-      const ow2 = windowUnit(1.2, 1.1);
-      ow2.position.set(-W * 0.12, roofTop + 2.0, -D * 0.18 + od / 2 + 0.04);
-      house.add(ow2);
-      for (let i = 0; i <= 6; i++) {
-        const x = -W / 2 + W * (i / 6);
-        house.add(box(0.05, 1.0, 0.05, M.rail, x, roofTop, D / 2 - 0.1));
+    // ---- carport canopy + parked SUV (side alley) ----
+    if (p.carport) {
+      const cx = W / 2 + 1.9;
+      const cz = D * 0.05;
+      const len = 5.2;
+      // curved translucent canopy (half cylinder)
+      const canopy = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.5, 1.5, len, 20, 1, true, 0, Math.PI),
+        M.canopy,
+      );
+      canopy.rotation.z = Math.PI / 2;
+      canopy.rotation.y = Math.PI / 2;
+      canopy.position.set(cx, 2.3, cz);
+      canopy.castShadow = false;
+      house.add(canopy);
+      // SUV (brown)
+      const suv = new THREE.Group();
+      suv.position.set(cx, 0, cz);
+      suv.add(box(2.0, 0.95, 4.6, M.suv, 0, 0.45, 0));
+      suv.add(box(1.9, 0.75, 2.6, M.suv, 0, 1.35, -0.1));
+      suv.add(box(1.84, 0.6, 2.3, M.suvGlass, 0, 1.45, -0.1));
+      for (const [wx, wz] of [
+        [-0.95, 1.5],
+        [0.95, 1.5],
+        [-0.95, -1.5],
+        [0.95, -1.5],
+      ] as Array<[number, number]>) {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.28, 18), M.rail);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.42, wz);
+        wheel.castShadow = true;
+        suv.add(wheel);
       }
-      house.add(box(W, 0.05, 0.05, M.rail, 0, roofTop + 1.0, D / 2 - 0.1));
-    }
-    if (p.tank) {
-      house.add(box(2.0, 0.4, 2.0, M.roof, W * 0.28, roofTop, D * 0.28));
-      const tk = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.4, 20), M.tank);
-      tk.position.set(W * 0.28, roofTop + 0.4 + 0.7, D * 0.28);
-      tk.castShadow = true;
-      house.add(tk);
-    }
-    if (p.ac) {
-      for (let i = 0; i < N; i++) {
-        const y = baseY + i * FH + 0.2;
-        const z = -D / 2 + 0.9 + (i % 3);
-        house.add(box(0.8, 0.6, 0.35, M.ac, W / 2 + 0.25, y, z));
-      }
+      house.add(suv);
     }
 
-    house.add(box(W + 4, 0.1, 2.2, M.yard, 0, 0, D / 2 + 1.6, false));
-    for (let i = 0; i <= 8; i++) {
-      const x = -(W + 3) / 2 + (W + 3) * (i / 8);
-      house.add(box(0.06, 1.0, 0.06, M.rail, x, 0, D / 2 + 2.7));
-    }
-    house.add(box(W + 3, 0.06, 0.06, M.rail, 0, 1.0, D / 2 + 2.7));
-    house.add(box(0.9, 0.4, 0.06, M.frame, -W / 2 + 0.7, pilotiH || 2.4, D / 2 + 0.05));
+    // small concrete yard inside the wall
+    house.add(box(W + 5, 0.08, 3.0, M.yard, 0, 0, D / 2 + 1.6, false));
 
-    controls.target.set(0, topY * 0.45, 0);
+    // ---- context neighbours ----
+    if (p.context) {
+      const nb = box(11, 13, 9, M.nWhite, 14, 0, 8); // white-tile building (right)
+      house.add(nb);
+      house.add(box(9, 11, 10, M.nBrick, -3, 0, -16)); // brick building (back-left)
+      house.add(box(10, 14, 9, M.nWhite, 15, 0, -10));
+    }
+
+    controls.target.set(0, wallTop * 0.5, 0);
   };
 
-  // ---- view presets ----
   const VIEWS: Record<View, [number, number, number]> = {
-    front: [0, 12, 38],
-    corner: [26, 18, 30],
-    side: [40, 12, 0],
-    top: [2, 46, 2],
+    front: [0, 9, 34],
+    corner: [22, 14, 26],
+    side: [36, 10, 4],
+    top: [2, 40, 6],
   };
 
-  // ---- loop ----
   let spinning = false;
   let raf = 0;
   const tick = () => {
@@ -452,7 +545,6 @@ export function House3D() {
   const [params, setParams] = useState<HouseParams>(HOUSE_DEFAULTS);
   const [spin, setSpin] = useState(false);
 
-  // Create the scene once.
   useEffect(() => {
     if (!mountRef.current) return;
     const api = createScene(mountRef.current);
@@ -464,7 +556,6 @@ export function House3D() {
     };
   }, []);
 
-  // Feed params on change.
   useEffect(() => {
     apiRef.current?.rebuild(params);
   }, [params]);
@@ -478,15 +569,14 @@ export function House3D() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-[300px_1fr]">
-      {/* Controls */}
       <div className="card !p-5 h-max">
         <div className="text-[13px] font-semibold text-ink mb-4">🏠 모델 조정</div>
         <div className="space-y-4">
           <Slider
-            label="지상 주거 층수"
+            label="지상 층수"
             value={params.floors}
-            min={2}
-            max={7}
+            min={1}
+            max={3}
             step={1}
             onChange={(v) => set("floors", v)}
           />
@@ -494,16 +584,16 @@ export function House3D() {
             label="한 층 높이"
             value={params.floorHeight}
             min={2.4}
-            max={3.4}
+            max={3.2}
             step={0.1}
             unit=" m"
             onChange={(v) => set("floorHeight", v)}
           />
           <Slider
-            label="건물 폭 (정면)"
+            label="건물 폭"
             value={params.width}
             min={6}
-            max={14}
+            max={13}
             step={0.5}
             unit=" m"
             onChange={(v) => set("width", v)}
@@ -511,32 +601,33 @@ export function House3D() {
           <Slider
             label="건물 깊이"
             value={params.depth}
-            min={8}
-            max={18}
+            min={7}
+            max={15}
             step={0.5}
             unit=" m"
             onChange={(v) => set("depth", v)}
           />
           <Slider
-            label="한 층 세대 수"
-            value={params.units}
-            min={1}
-            max={3}
-            step={1}
-            onChange={(v) => set("units", v)}
+            label="반지하 노출 높이"
+            value={params.basement}
+            min={0}
+            max={1.8}
+            step={0.1}
+            unit=" m"
+            onChange={(v) => set("basement", v)}
           />
         </div>
 
         <div className="my-4 h-px bg-zinc-100" />
         <div className="grid grid-cols-2 gap-2.5">
           <Toggle
-            label="필로티 주차"
-            checked={params.piloti}
-            onChange={(v) => set("piloti", v)}
+            label="통유리 베란다"
+            checked={params.sunroom}
+            onChange={(v) => set("sunroom", v)}
           />
-          <Toggle label="옥탑방" checked={params.oktap} onChange={(v) => set("oktap", v)} />
-          <Toggle label="물탱크" checked={params.tank} onChange={(v) => set("tank", v)} />
-          <Toggle label="실외기" checked={params.ac} onChange={(v) => set("ac", v)} />
+          <Toggle label="담장·대문" checked={params.gate} onChange={(v) => set("gate", v)} />
+          <Toggle label="주차 캐노피" checked={params.carport} onChange={(v) => set("carport", v)} />
+          <Toggle label="주변 건물" checked={params.context} onChange={(v) => set("context", v)} />
         </div>
 
         <div className="my-4 h-px bg-zinc-100" />
@@ -544,7 +635,7 @@ export function House3D() {
           {(
             [
               ["front", "정면"],
-              ["corner", "3/4"],
+              ["corner", "코너"],
               ["side", "측면"],
               ["top", "상단"],
             ] as Array<[View, string]>
@@ -569,7 +660,6 @@ export function House3D() {
         >
           {spin ? "자동회전 멈춤" : "자동회전 시작"}
         </button>
-
         <button
           onClick={() => setParams(HOUSE_DEFAULTS)}
           className="mt-2.5 h-9 w-full rounded-xl text-[12px] font-semibold text-ink-muted hover:text-ink transition"
@@ -578,7 +668,6 @@ export function House3D() {
         </button>
       </div>
 
-      {/* Viewport */}
       <div className="card !p-0 overflow-hidden">
         <div
           ref={mountRef}
