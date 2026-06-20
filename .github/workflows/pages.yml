@@ -2,7 +2,7 @@ name: Deploy 우리집 3D to GitHub Pages
 
 on:
   push:
-    branches: ["claude/upbeat-brahmagupta-xrho4c", "main"]
+    branches: ["main"]
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
